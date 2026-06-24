@@ -1,0 +1,262 @@
+import { execFile as execFileCallback, spawn } from "node:child_process";
+import { resolve } from "node:path";
+import { createInterface } from "node:readline";
+import { promisify } from "node:util";
+import { type SessionEvent, SessionEventSchema } from "@cosquared/schema";
+import { z } from "zod";
+import type { Collector, CollectorOptions } from "../collector";
+import {
+	CHURN_WINDOW_DAYS,
+	type ChurnTotals,
+	reduceChurnLines,
+} from "./churn-reduction";
+import { deriveRepoSnapshot, mapCommitsToEvents } from "./event-mapping";
+import { type ReducedCommit, reduceLogLines } from "./log-reduction";
+
+const execFile = promisify(execFileCallback);
+
+/**
+ * Reads a repo's git metadata and converts it into the normalized
+ * {@link SessionEvent} stream: one `commit` event per commit authored by
+ * the repo's configured `user.email`, plus one `repo_snapshot` of
+ * repo-shape counts at HEAD.
+ *
+ * Privacy by construction (CLAUDE.md invariant #1): commit messages are
+ * never read (the log format string does not request them); file paths
+ * and the author email are inspected transiently and reduced to counts
+ * and booleans; every returned batch is re-validated against the strict
+ * `SessionEventSchema`. Strictly read-only: the repo is never written,
+ * moved, or locked.
+ *
+ * Invokes the system `git` binary directly (array argv, no shell — no
+ * injection surface) so this public package carries zero runtime
+ * dependencies beyond the schema (PRD §8: auditability is the trust
+ * strategy). Every git failure degrades to fewer/zero events, never a
+ * throw (PRD §14 Risk #4).
+ */
+export class GitCollector implements Collector {
+	readonly source = "git" as const;
+	private readonly gitBinary: string;
+
+	constructor({ gitBinary }: { gitBinary?: string } = {}) {
+		this.gitBinary = gitBinary ?? "git";
+	}
+
+	/** True iff the git binary runs. Never throws. */
+	async detect(): Promise<boolean> {
+		try {
+			await execFile(this.gitBinary, ["--version"]);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Collects the current user's commit history and the HEAD repo
+	 * snapshot for `repoPath`.
+	 *
+	 * `since` is an exclusive cutoff (events with `timestamp > since`
+	 * survive), applied uniformly to commits AND the snapshot — an
+	 * unchanged repo re-synced emits nothing, including no stale
+	 * snapshot. Git's own `--since` is used only as a coarse pre-filter.
+	 */
+	async collect({
+		repoPath,
+		since,
+	}: CollectorOptions): Promise<SessionEvent[]> {
+		const repo = resolve(repoPath);
+		if (!(await this.isWorkTree(repo))) {
+			return [];
+		}
+
+		const allEvents: SessionEvent[] = [];
+
+		// No user.email → skip commit events but still emit the snapshot
+		// (the snapshot is authorship-independent; churn is NOT — it measures
+		// the user's own rework, so it is skipped too). The email lives only
+		// in this local and inside the reducers' comparisons — never stored.
+		const userEmail = await this.configuredUserEmail(repo);
+		if (userEmail !== null) {
+			const commits = await this.streamCommitLog(repo, since);
+			allEvents.push(...mapCommitsToEvents(commits, userEmail));
+		}
+
+		// No HEAD (fresh `git init`) → no deterministic timestamp → no
+		// snapshot and no churn. Both stamp HEAD's committer date so an
+		// unchanged repo re-synced under `since` emits nothing.
+		const headIso = await this.headCommitDate(repo);
+		if (headIso !== null) {
+			const snapshot = await this.headSnapshot(repo, headIso);
+			if (snapshot !== null) {
+				allEvents.push(snapshot);
+			}
+			if (userEmail !== null) {
+				const churn = await this.churnSnapshot(repo, headIso, userEmail);
+				if (churn !== null) {
+					allEvents.push(churn);
+				}
+			}
+		}
+
+		const events =
+			since === undefined
+				? allEvents
+				: allEvents.filter(
+						(event) => Date.parse(event.timestamp) > since.getTime(),
+					);
+		// Runtime enforcement of the no-free-text invariant: every batch must
+		// pass the strict schema before it leaves the collector.
+		return z.array(SessionEventSchema).parse(events);
+	}
+
+	private async git(repo: string, args: string[]): Promise<string | null> {
+		try {
+			const { stdout } = await execFile(this.gitBinary, ["-C", repo, ...args]);
+			return stdout;
+		} catch {
+			return null;
+		}
+	}
+
+	private async isWorkTree(repo: string): Promise<boolean> {
+		const result = await this.git(repo, ["rev-parse", "--is-inside-work-tree"]);
+		return result !== null && result.trim() === "true";
+	}
+
+	/** TRANSIENT — the returned email is compared and dropped, never emitted. */
+	private async configuredUserEmail(repo: string): Promise<string | null> {
+		const result = await this.git(repo, ["config", "user.email"]);
+		const email = result?.trim() ?? "";
+		return email.length > 0 ? email : null;
+	}
+
+	/**
+	 * Streams `git log` straight through the line reducer — spawn, not
+	 * execFile, because full-history `--numstat` on a large monorepo can
+	 * exceed any sane `maxBuffer`; lines are reduced as they arrive and
+	 * never accumulated (mirrors the claude-code collector's "never read
+	 * whole" rationale).
+	 *
+	 * `--no-merges`: merge commits carry no authored work and no numstat —
+	 * including them would emit empty `commit` events that dilute cadence.
+	 * Committer date (`%cI`), not author date: it aligns with git's
+	 * `--since` filtering and with incremental-sync semantics — a rebased
+	 * commit re-enters history with a new committer date and resurfaces
+	 * instead of being silently lost behind the cutoff.
+	 */
+	private streamCommitLog(
+		repo: string,
+		since: Date | undefined,
+	): Promise<ReducedCommit[]> {
+		return new Promise((resolveCommits) => {
+			const child = spawn(this.gitBinary, [
+				"-C",
+				repo,
+				"log",
+				"--no-merges",
+				"--numstat",
+				"--format=%x1e%cI%x1f%ae",
+				...(since ? [`--since=${since.toISOString()}`] : []),
+			]);
+			const reduced = reduceLogLines(
+				createInterface({
+					input: child.stdout,
+					crlfDelay: Number.POSITIVE_INFINITY,
+				}),
+			).catch((): ReducedCommit[] => []);
+			child.once("error", () => resolveCommits([]));
+			// `close` fires after stdout has ended, so `reduced` has seen every
+			// line by then. Non-zero exit (e.g. 128 on a repo with no commits)
+			// means "no history to report", not an error — degrade to zero.
+			child.once("close", (code) => {
+				resolveCommits(code === 0 ? reduced : []);
+			});
+		});
+	}
+
+	/** HEAD committer date, UTC-normalized — null when the repo has no HEAD. */
+	private async headCommitDate(repo: string): Promise<string | null> {
+		const headDate = await this.git(repo, ["log", "-1", "--format=%cI"]);
+		const headMillis = Date.parse(headDate?.trim() ?? "");
+		return Number.isNaN(headMillis) ? null : new Date(headMillis).toISOString();
+	}
+
+	private async headSnapshot(
+		repo: string,
+		headIso: string,
+	): Promise<SessionEvent | null> {
+		// `-z` NUL-terminates entries because paths can contain newlines.
+		const lsFiles = await this.git(repo, ["ls-files", "-z"]);
+		if (lsFiles === null) {
+			return null;
+		}
+		const trackedPaths = lsFiles.split("\0").filter((path) => path.length > 0);
+		return deriveRepoSnapshot(trackedPaths, headIso);
+	}
+
+	/**
+	 * The `churn_snapshot` event: one extra bounded `git log` pass over the
+	 * trailing scan window, streamed through {@link reduceChurnLines}. The
+	 * scan window is 2 × {@link CHURN_WINDOW_DAYS} (derived, not a second
+	 * magic number) so a deletion early in the 14-day cohort can still see
+	 * the additions up to 14 days before it that it churns.
+	 */
+	private async churnSnapshot(
+		repo: string,
+		headIso: string,
+		userEmail: string,
+	): Promise<SessionEvent | null> {
+		const scanWindowMillis = CHURN_WINDOW_DAYS * 2 * 86_400_000;
+		const scanSinceIso = new Date(
+			Date.parse(headIso) - scanWindowMillis,
+		).toISOString();
+		const totals = await this.streamChurnLog(repo, scanSinceIso, {
+			windowDays: CHURN_WINDOW_DAYS,
+			userEmail,
+			referenceTime: headIso,
+		});
+		if (totals === null) {
+			return null;
+		}
+		return {
+			sessionId: null,
+			source: "git",
+			timestamp: headIso,
+			type: "churn_snapshot",
+			windowDays: totals.windowDays,
+			linesAdded: totals.linesAdded,
+			linesChurned: totals.linesChurned,
+		};
+	}
+
+	/** Mirrors {@link streamCommitLog}: spawn, stream, degrade — never throw. */
+	private streamChurnLog(
+		repo: string,
+		scanSinceIso: string,
+		options: { windowDays: number; userEmail: string; referenceTime: string },
+	): Promise<ChurnTotals | null> {
+		return new Promise((resolveTotals) => {
+			const child = spawn(this.gitBinary, [
+				"-C",
+				repo,
+				"log",
+				"--no-merges",
+				"--numstat",
+				"--format=%x1e%cI%x1f%ae",
+				`--since=${scanSinceIso}`,
+			]);
+			const reduced = reduceChurnLines(
+				createInterface({
+					input: child.stdout,
+					crlfDelay: Number.POSITIVE_INFINITY,
+				}),
+				options,
+			).catch((): ChurnTotals | null => null);
+			child.once("error", () => resolveTotals(null));
+			child.once("close", (code) => {
+				resolveTotals(code === 0 ? reduced : null);
+			});
+		});
+	}
+}

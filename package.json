@@ -1,0 +1,20 @@
+{
+	"name": "cosquared-collector",
+	"private": true,
+	"type": "module",
+	"description": "Public, auditable half of CoSquared: collectors, redaction pipeline, telemetry schema, and the full scoring methodology. Mirrored from the private monorepo as an explicit allowlist.",
+	"packageManager": "pnpm@10.34.3",
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"test": "vitest run",
+		"lint": "biome check .",
+		"typecheck": "pnpm -r typecheck"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.0.0",
+		"typescript": "^5.0.0",
+		"vitest": "^3.0.0"
+	}
+}

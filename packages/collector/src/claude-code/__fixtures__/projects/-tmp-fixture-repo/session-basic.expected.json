@@ -1,0 +1,145 @@
+[
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "session_start",
+		"toolVersion": "2.1.170"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "user_prompt",
+		"wordCount": 10,
+		"isQuestion": true,
+		"referencesPlanArtifact": true
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:00:10.000Z",
+		"type": "command_invoked",
+		"category": "plan"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:00:30.000Z",
+		"type": "user_prompt",
+		"wordCount": 10,
+		"isQuestion": true,
+		"referencesPlanArtifact": false
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:00:30.000Z",
+		"type": "explanation_request"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:01:00.000Z",
+		"type": "tool_call",
+		"toolName": "Edit",
+		"category": "file_edit"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:01:05.000Z",
+		"type": "change_accepted",
+		"followedByValidation": true
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:02:00.000Z",
+		"type": "tool_call",
+		"toolName": "Bash",
+		"category": "execute"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:02:00.000Z",
+		"type": "test_run",
+		"passed": true,
+		"framework": "npm-script"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:03:00.000Z",
+		"type": "tool_call",
+		"toolName": "Bash",
+		"category": "execute"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:03:10.000Z",
+		"type": "error_encountered",
+		"resolved": true
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:04:00.000Z",
+		"type": "tool_call",
+		"toolName": "Write",
+		"category": "file_edit"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:04:00.000Z",
+		"type": "plan_artifact_created",
+		"artifactKind": "plan_doc"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:04:05.000Z",
+		"type": "change_accepted",
+		"followedByValidation": false
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:05:00.000Z",
+		"type": "tool_call",
+		"toolName": "ExitPlanMode",
+		"category": "other"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:05:00.000Z",
+		"type": "plan_artifact_created",
+		"artifactKind": "plan_doc"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:06:00.000Z",
+		"type": "tool_call",
+		"toolName": "Edit",
+		"category": "file_edit"
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:06:05.000Z",
+		"type": "change_rejected",
+		"followedByValidation": null
+	},
+	{
+		"sessionId": "00000000-0000-4000-8000-000000000001",
+		"source": "claude-code",
+		"timestamp": "2026-06-10T10:06:35.000Z",
+		"type": "session_end",
+		"durationMinutes": 7
+	}
+]

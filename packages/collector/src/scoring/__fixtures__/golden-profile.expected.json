@@ -1,0 +1,296 @@
+{
+	"schemaVersion": "1.4.0",
+	"window": {
+		"firstEventAt": "2026-06-10T10:00:00.000Z",
+		"lastEventAt": "2026-06-11T12:00:00.000Z",
+		"eventCount": 19,
+		"sessionCount": 2,
+		"commitCount": 2
+	},
+	"builderType": "careful_validator",
+	"aiCollaboration": {
+		"value": 53,
+		"confidence": "low",
+		"components": [
+			{
+				"signal": {
+					"id": "task_framing",
+					"value": 0,
+					"confidence": "low",
+					"evidence": [
+						{
+							"kind": "framed_sessions",
+							"numerator": 0,
+							"denominator": 2,
+							"refs": []
+						}
+					]
+				},
+				"weight": 0.2
+			},
+			{
+				"signal": {
+					"id": "tool_workflow_judgment",
+					"value": 81.25,
+					"confidence": "low",
+					"evidence": [
+						{
+							"kind": "balanced_sessions",
+							"numerator": 1,
+							"denominator": 2,
+							"refs": [
+								{
+									"sessionId": "s1",
+									"source": "claude-code",
+									"timestamp": "2026-06-10T10:00:00.000Z"
+								}
+							]
+						},
+						{
+							"kind": "workflow_leverage_sessions",
+							"numerator": 1,
+							"denominator": 2,
+							"refs": [
+								{
+									"sessionId": "s1",
+									"source": "claude-code",
+									"timestamp": "2026-06-10T10:08:00.000Z"
+								}
+							]
+						},
+						{
+							"kind": "repo_context_artifacts",
+							"numerator": 3,
+							"denominator": 3,
+							"refs": [
+								{
+									"sessionId": null,
+									"source": "git",
+									"timestamp": "2026-06-11T12:00:00.000Z"
+								}
+							]
+						}
+					]
+				},
+				"weight": 0.2
+			},
+			{
+				"signal": {
+					"id": "verification_calibration",
+					"value": 80,
+					"confidence": "low",
+					"evidence": [
+						{
+							"kind": "validation_after_accept",
+							"numerator": 2,
+							"denominator": 3,
+							"refs": [
+								{
+									"sessionId": "s1",
+									"source": "claude-code",
+									"timestamp": "2026-06-10T10:06:00.000Z"
+								},
+								{
+									"sessionId": "s2",
+									"source": "claude-code",
+									"timestamp": "2026-06-11T10:02:00.000Z"
+								}
+							]
+						},
+						{
+							"kind": "sessions_with_accept_and_test_run",
+							"numerator": 1,
+							"denominator": 2,
+							"refs": [
+								{
+									"sessionId": "s1",
+									"source": "claude-code",
+									"timestamp": "2026-06-10T10:07:00.000Z"
+								}
+							]
+						}
+					]
+				},
+				"weight": 0.4
+			},
+			{
+				"signal": {
+					"id": "cognitive_engagement",
+					"value": 25,
+					"confidence": "low",
+					"evidence": [
+						{
+							"kind": "engagement_depth",
+							"numerator": 1,
+							"denominator": 4,
+							"refs": [
+								{
+									"sessionId": "s1",
+									"source": "claude-code",
+									"timestamp": "2026-06-10T10:09:00.000Z"
+								}
+							]
+						}
+					]
+				},
+				"weight": 0.2
+			}
+		]
+	},
+	"testingDiscipline": {
+		"value": 93,
+		"confidence": "low",
+		"components": [
+			{
+				"signal": {
+					"id": "testing_discipline",
+					"value": 100,
+					"confidence": "normal",
+					"evidence": [
+						{
+							"kind": "repo_test_file_ratio",
+							"numerator": 20,
+							"denominator": 100,
+							"refs": [
+								{
+									"sessionId": null,
+									"source": "git",
+									"timestamp": "2026-06-11T12:00:00.000Z"
+								}
+							]
+						}
+					]
+				},
+				"weight": 0.3
+			},
+			{
+				"signal": {
+					"id": "testing_discipline",
+					"value": 83.33333333333334,
+					"confidence": "low",
+					"evidence": [
+						{
+							"kind": "sessions_with_test_run",
+							"numerator": 1,
+							"denominator": 2,
+							"refs": [
+								{
+									"sessionId": "s1",
+									"source": "claude-code",
+									"timestamp": "2026-06-10T10:07:00.000Z"
+								}
+							]
+						}
+					]
+				},
+				"weight": 0.4
+			},
+			{
+				"signal": {
+					"id": "testing_discipline",
+					"value": 100,
+					"confidence": "low",
+					"evidence": [
+						{
+							"kind": "commits_touching_tests",
+							"numerator": 1,
+							"denominator": 2,
+							"refs": [
+								{
+									"sessionId": null,
+									"source": "git",
+									"timestamp": "2026-06-10T10:30:00.000Z"
+								}
+							]
+						}
+					]
+				},
+				"weight": 0.3
+			}
+		]
+	},
+	"shippingMomentum": {
+		"value": 63,
+		"confidence": "low",
+		"components": [
+			{
+				"signal": {
+					"id": "shipping_momentum",
+					"value": 28.57142857142857,
+					"confidence": "low",
+					"evidence": [
+						{
+							"kind": "commit_cadence_days",
+							"numerator": 2,
+							"denominator": 14,
+							"refs": [
+								{
+									"sessionId": null,
+									"source": "git",
+									"timestamp": "2026-06-10T10:30:00.000Z"
+								},
+								{
+									"sessionId": null,
+									"source": "git",
+									"timestamp": "2026-06-11T09:00:00.000Z"
+								}
+							]
+						}
+					]
+				},
+				"weight": 0.4
+			},
+			{
+				"signal": {
+					"id": "shipping_momentum",
+					"value": 71.42857142857143,
+					"confidence": "low",
+					"evidence": [
+						{
+							"kind": "sessions_ending_in_commit",
+							"numerator": 1,
+							"denominator": 2,
+							"refs": [
+								{
+									"sessionId": "s1",
+									"source": "claude-code",
+									"timestamp": "2026-06-10T10:00:00.000Z"
+								}
+							]
+						}
+					]
+				},
+				"weight": 0.3
+			},
+			{
+				"signal": {
+					"id": "shipping_momentum",
+					"value": 100,
+					"confidence": "normal",
+					"evidence": [
+						{
+							"kind": "recent_churn_ratio",
+							"numerator": 10,
+							"denominator": 100,
+							"refs": [
+								{
+									"sessionId": null,
+									"source": "git",
+									"timestamp": "2026-06-11T12:00:00.000Z"
+								}
+							]
+						}
+					]
+				},
+				"weight": 0.3
+			}
+		]
+	},
+	"strengths": [
+		"testing_discipline",
+		"tool_workflow_judgment",
+		"verification_calibration"
+	],
+	"weaknesses": ["task_framing", "cognitive_engagement"],
+	"recommendedFocus": "task_framing"
+}

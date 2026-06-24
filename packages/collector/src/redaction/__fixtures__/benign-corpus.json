@@ -1,0 +1,46 @@
+[
+	{
+		"name": "fortyCharGitCommitSha",
+		"input": "commit d4f9b8c2e17a365490fedcba9876543210abcdef"
+	},
+	{
+		"name": "uuidRequestId",
+		"input": "request id 123e4567-e89b-42d3-a456-426614174000"
+	},
+	{
+		"name": "pnpmLockIntegrityHash",
+		"input": "integrity: sha512-WfqZ8mvHxLnJ3vRb2cD9eF0gAhB1iCjDl4mEnFoGpHqIrJsMtNuOvPwQxRySzTbUcVdWeXfYgZhAiBjCkDlEmFn=="
+	},
+	{
+		"name": "proseMentioningApiKeyStorage",
+		"input": "the API key is stored in the OS keychain, never in plaintext config"
+	},
+	{
+		"name": "secretSantaVariableAssignment",
+		"input": "const secretSantaPairs = participants"
+	},
+	{
+		"name": "relativeSourcePath",
+		"input": "see src/redaction/rules.ts for the rule table"
+	},
+	{
+		"name": "packageJsonVersionString",
+		"input": "\"version\": \"0.1.0\""
+	},
+	{
+		"name": "npmScriptTestFixtureLine",
+		"input": "expected: \"npm-script\""
+	},
+	{
+		"name": "shortHexDeployId",
+		"input": "deploy 7f3a2b1c finished in 42s"
+	},
+	{
+		"name": "scopedPackageTestCommand",
+		"input": "pnpm vitest run --project @cosquared/collector"
+	},
+	{
+		"name": "systemBinPath",
+		"input": "PATH includes /usr/local/bin and /opt/homebrew/bin"
+	}
+]

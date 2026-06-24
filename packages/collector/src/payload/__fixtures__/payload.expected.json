@@ -1,0 +1,232 @@
+{
+	"schema_version": "1.4.0",
+	"client": {
+		"cli_version": "0.1.0",
+		"platform": "test-os"
+	},
+	"repo": {
+		"id_hash": "sha256:fixture-repo",
+		"has_tests": true,
+		"test_file_ratio": 0.2,
+		"commit_count_30d": 2,
+		"churn_ratio_14d": 0.1,
+		"context_artifact_count": 2,
+		"doc_file_count": 5
+	},
+	"sessions": [
+		{
+			"source": "claude-code",
+			"duration_minutes": 10,
+			"prompt_count": 1,
+			"tests_run_count": 1,
+			"errors_encountered": 0,
+			"explanation_request_count": 1,
+			"plan_artifact_present": true,
+			"validation_after_accept_rate": 1,
+			"question_prompt_rate": 0
+		},
+		{
+			"source": "claude-code",
+			"duration_minutes": null,
+			"prompt_count": 1,
+			"tests_run_count": 0,
+			"errors_encountered": 0,
+			"explanation_request_count": 0,
+			"plan_artifact_present": false,
+			"validation_after_accept_rate": 1,
+			"question_prompt_rate": 0
+		}
+	],
+	"local_scores": {
+		"ai_collaboration": 53,
+		"ai_collaboration_subsignals": {
+			"task_framing": 0,
+			"tool_workflow_judgment": 81.25,
+			"verification_calibration": 80,
+			"cognitive_engagement": 25
+		},
+		"testing": 93,
+		"shipping": 63
+	},
+	"profile": {
+		"builder_type": "careful_validator",
+		"recommended_focus": "task_framing",
+		"strengths": [
+			"testing_discipline",
+			"tool_workflow_judgment",
+			"verification_calibration"
+		],
+		"weaknesses": ["task_framing", "cognitive_engagement"],
+		"confidence": {
+			"ai_collaboration": "low",
+			"testing": "low",
+			"shipping": "low",
+			"subsignals": {
+				"task_framing": "low",
+				"tool_workflow_judgment": "low",
+				"verification_calibration": "low",
+				"cognitive_engagement": "low"
+			}
+		},
+		"evidence": {
+			"task_framing": [
+				{
+					"kind": "framed_sessions",
+					"numerator": 0,
+					"denominator": 2,
+					"refs": []
+				}
+			],
+			"tool_workflow_judgment": [
+				{
+					"kind": "balanced_sessions",
+					"numerator": 1,
+					"denominator": 2,
+					"refs": [
+						{
+							"source": "claude-code",
+							"session_date": "2026-06-10"
+						}
+					]
+				},
+				{
+					"kind": "workflow_leverage_sessions",
+					"numerator": 1,
+					"denominator": 2,
+					"refs": [
+						{
+							"source": "claude-code",
+							"session_date": "2026-06-10"
+						}
+					]
+				},
+				{
+					"kind": "repo_context_artifacts",
+					"numerator": 3,
+					"denominator": 3,
+					"refs": [
+						{
+							"source": "git",
+							"session_date": "2026-06-11"
+						}
+					]
+				}
+			],
+			"verification_calibration": [
+				{
+					"kind": "validation_after_accept",
+					"numerator": 2,
+					"denominator": 3,
+					"refs": [
+						{
+							"source": "claude-code",
+							"session_date": "2026-06-10"
+						},
+						{
+							"source": "claude-code",
+							"session_date": "2026-06-11"
+						}
+					]
+				},
+				{
+					"kind": "sessions_with_accept_and_test_run",
+					"numerator": 1,
+					"denominator": 2,
+					"refs": [
+						{
+							"source": "claude-code",
+							"session_date": "2026-06-10"
+						}
+					]
+				}
+			],
+			"cognitive_engagement": [
+				{
+					"kind": "engagement_depth",
+					"numerator": 1,
+					"denominator": 4,
+					"refs": [
+						{
+							"source": "claude-code",
+							"session_date": "2026-06-10"
+						}
+					]
+				}
+			],
+			"testing_discipline": [
+				{
+					"kind": "repo_test_file_ratio",
+					"numerator": 20,
+					"denominator": 100,
+					"refs": [
+						{
+							"source": "git",
+							"session_date": "2026-06-11"
+						}
+					]
+				},
+				{
+					"kind": "sessions_with_test_run",
+					"numerator": 1,
+					"denominator": 2,
+					"refs": [
+						{
+							"source": "claude-code",
+							"session_date": "2026-06-10"
+						}
+					]
+				},
+				{
+					"kind": "commits_touching_tests",
+					"numerator": 1,
+					"denominator": 2,
+					"refs": [
+						{
+							"source": "git",
+							"session_date": "2026-06-10"
+						}
+					]
+				}
+			],
+			"shipping_momentum": [
+				{
+					"kind": "commit_cadence_days",
+					"numerator": 2,
+					"denominator": 14,
+					"refs": [
+						{
+							"source": "git",
+							"session_date": "2026-06-10"
+						},
+						{
+							"source": "git",
+							"session_date": "2026-06-11"
+						}
+					]
+				},
+				{
+					"kind": "sessions_ending_in_commit",
+					"numerator": 1,
+					"denominator": 2,
+					"refs": [
+						{
+							"source": "claude-code",
+							"session_date": "2026-06-10"
+						}
+					]
+				},
+				{
+					"kind": "recent_churn_ratio",
+					"numerator": 10,
+					"denominator": 100,
+					"refs": [
+						{
+							"source": "git",
+							"session_date": "2026-06-11"
+						}
+					]
+				}
+			]
+		}
+	}
+}

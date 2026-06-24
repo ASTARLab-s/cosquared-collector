@@ -1,0 +1,20 @@
+{
+	"name": "@cosquared/schema",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "PUBLIC package (Apache-2.0 mirror allowlist): versioned telemetry schema — the normalized SessionEvent types every collector emits. Depends only on zod; must never import private workspace packages.",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"zod": "^4.0.0"
+	},
+	"devDependencies": {
+		"typescript": "^5.0.0",
+		"vitest": "^3.0.0"
+	}
+}
