@@ -3,24 +3,26 @@ import { type ReducedCommit, reduceLogLines } from "./log-reduction";
 
 /**
  * Named raw-log fixtures pinning every numstat edge case the reducer must
- * handle. Lines mirror `git log --format=%x1e%cI%x1f%ae --numstat` output
- * exactly (header = \x1e + date + \x1f + email).
+ * handle. Lines mirror `git log --format=%x1e%cI%x1f%ae%x1f%an --numstat` output
+ * exactly (header = \x1e + date + \x1f + email + \x1f + name).
  */
 
-function header(dateIso: string, email: string): string {
-	return `\x1e${dateIso}\x1f${email}`;
+const AUTHOR_NAME = "Author Name";
+
+function header(dateIso: string, email: string, name = AUTHOR_NAME): string {
+	return `\x1e${dateIso}\x1f${email}\x1f${name}`;
 }
 
 const fixtures: Record<string, { lines: string[]; expected: ReducedCommit[] }> =
 	{
 		twoCommitsPlainText: {
 			lines: [
-				header("2026-06-11T10:00:00Z", "a@example.com"),
+				header("2026-06-11T10:00:00Z", "a@example.com", "Ada Lovelace"),
 				"",
 				"10\t2\tsrc/index.ts",
 				"5\t0\tsrc/util.ts",
 				"",
-				header("2026-06-10T09:00:00Z", "b@example.com"),
+				header("2026-06-10T09:00:00Z", "b@example.com", "Babbage"),
 				"",
 				"1\t1\tREADME.md",
 			],
@@ -28,6 +30,7 @@ const fixtures: Record<string, { lines: string[]; expected: ReducedCommit[] }> =
 				{
 					timestamp: "2026-06-11T10:00:00.000Z",
 					authorEmail: "a@example.com",
+					authorName: "Ada Lovelace",
 					filesChanged: 2,
 					insertions: 15,
 					deletions: 2,
@@ -36,6 +39,7 @@ const fixtures: Record<string, { lines: string[]; expected: ReducedCommit[] }> =
 				{
 					timestamp: "2026-06-10T09:00:00.000Z",
 					authorEmail: "b@example.com",
+					authorName: "Babbage",
 					filesChanged: 1,
 					insertions: 1,
 					deletions: 1,
@@ -53,6 +57,7 @@ const fixtures: Record<string, { lines: string[]; expected: ReducedCommit[] }> =
 				{
 					timestamp: "2026-06-11T10:00:00.000Z",
 					authorEmail: "a@example.com",
+					authorName: AUTHOR_NAME,
 					filesChanged: 1,
 					insertions: 0,
 					deletions: 0,
@@ -70,6 +75,7 @@ const fixtures: Record<string, { lines: string[]; expected: ReducedCommit[] }> =
 				{
 					timestamp: "2026-06-11T10:00:00.000Z",
 					authorEmail: "a@example.com",
+					authorName: AUTHOR_NAME,
 					filesChanged: 1,
 					insertions: 0,
 					deletions: 0,
@@ -83,6 +89,7 @@ const fixtures: Record<string, { lines: string[]; expected: ReducedCommit[] }> =
 				{
 					timestamp: "2026-06-11T10:00:00.000Z",
 					authorEmail: "a@example.com",
+					authorName: AUTHOR_NAME,
 					filesChanged: 0,
 					insertions: 0,
 					deletions: 0,
@@ -90,12 +97,36 @@ const fixtures: Record<string, { lines: string[]; expected: ReducedCommit[] }> =
 				},
 			],
 		},
+		emptyAuthorNameIsKept: {
+			// `%an` can be empty if a commit was authored with no configured name.
+			lines: [`\x1e2026-06-11T10:00:00Z\x1fa@example.com\x1f`],
+			expected: [
+				{
+					timestamp: "2026-06-11T10:00:00.000Z",
+					authorEmail: "a@example.com",
+					authorName: "",
+					filesChanged: 0,
+					insertions: 0,
+					deletions: 0,
+					touchedTestFiles: false,
+				},
+			],
+		},
+		headerMissingNameFieldSkipped: {
+			// A two-field header (no \x1f name) is malformed and dropped.
+			lines: [
+				"\x1e2026-06-11T10:00:00Z\x1fa@example.com",
+				"1\t0\tsrc/index.ts",
+			],
+			expected: [],
+		},
 		offsetTimestampNormalizedToUtc: {
 			lines: [header("2026-06-11T09:30:00+02:00", "a@example.com")],
 			expected: [
 				{
 					timestamp: "2026-06-11T07:30:00.000Z",
 					authorEmail: "a@example.com",
+					authorName: AUTHOR_NAME,
 					filesChanged: 0,
 					insertions: 0,
 					deletions: 0,
@@ -115,6 +146,7 @@ const fixtures: Record<string, { lines: string[]; expected: ReducedCommit[] }> =
 				{
 					timestamp: "2026-06-11T10:00:00.000Z",
 					authorEmail: "a@example.com",
+					authorName: AUTHOR_NAME,
 					filesChanged: 1,
 					insertions: 2,
 					deletions: 1,
@@ -131,6 +163,7 @@ const fixtures: Record<string, { lines: string[]; expected: ReducedCommit[] }> =
 				{
 					timestamp: "2026-06-11T10:00:00.000Z",
 					authorEmail: "a@example.com",
+					authorName: AUTHOR_NAME,
 					filesChanged: 1,
 					insertions: 3,
 					deletions: 0,

@@ -19,6 +19,12 @@ export const SessionSourceSchema = z.enum([
 	"cursor",
 	"codex-cli",
 	"git",
+	/**
+	 * Events observed by an external platform's own infrastructure (CI sandbox
+	 * runs, server-observed pushes) submitted via the Evaluation API — never
+	 * emitted by the CLI collectors.
+	 */
+	"external",
 ]);
 export type SessionSource = z.infer<typeof SessionSourceSchema>;
 

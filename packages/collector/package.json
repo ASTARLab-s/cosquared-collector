@@ -6,7 +6,8 @@
 	"license": "Apache-2.0",
 	"description": "PUBLIC package (Apache-2.0 mirror allowlist): collectors, redaction, and scoring methodology. Depends on the public schema package ONLY — must never import any private workspace package.",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./scoring": "./src/scoring/index.ts"
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit"
@@ -16,7 +17,7 @@
 		"zod": "^4.0.0"
 	},
 	"devDependencies": {
-		"@types/node": "^20.0.0",
+		"@types/node": "^22.0.0",
 		"typescript": "^5.0.0",
 		"vitest": "^3.0.0"
 	}

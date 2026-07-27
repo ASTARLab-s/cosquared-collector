@@ -1,10 +1,12 @@
+import { type CommitIdentity, isUserCommit } from "./identity";
+
 /**
  * Pure, streaming reduction of raw `git log --numstat` output lines to
  * aggregate churn totals — no filesystem, no network, fully unit-testable.
  *
  * Parses the same line grammar as `log-reduction.ts` (the collector invokes
- * git with `--format=%x1e%cI%x1f%ae --numstat`):
- *   header line:  `\x1e<committerDateIso>\x1f<authorEmail>`
+ * git with `--format=%x1e%cI%x1f%ae%x1f%an --numstat`):
+ *   header line:  `\x1e<committerDateIso>\x1f<authorEmail>\x1f<authorName>`
  *   numstat line: `<insertions>\t<deletions>\t<path>` (`-` for binary)
  *
  * PRIVACY CONTRACT: this module relaxes the "inspect a path on its line,
@@ -45,7 +47,7 @@ const DAY_MILLIS = 86_400_000;
 
 /** Record separator emitted by `%x1e` at the start of each header line. */
 const HEADER_PREFIX = "\x1e";
-/** Field separator emitted by `%x1f` between date and email. */
+/** Field separator emitted by `%x1f` between the date, email, and name fields. */
 const FIELD_SEPARATOR = "\x1f";
 /** `<insertions>\t<deletions>\t<path>`; `-` counts (binary files) parse as 0. */
 const NUMSTAT_LINE = /^(\d+|-)\t(\d+|-)\t(.+)$/;
@@ -59,8 +61,9 @@ export interface ChurnTotals {
 
 export interface ReduceChurnOptions {
 	windowDays: number;
-	/** TRANSIENT — compared case-insensitively per commit, then dropped. */
-	userEmail: string;
+	/** TRANSIENT — the user's identities; each commit's author is matched against
+	 * them ({@link isUserCommit}) and dropped. Churn is personal-scoped. */
+	identity: CommitIdentity;
 	/** ISO timestamp the `linesAdded` window ends at (HEAD committer date). */
 	referenceTime: string;
 }
@@ -89,26 +92,26 @@ function parseCount(raw: string): number {
  */
 export async function reduceChurnLines(
 	lines: AsyncIterable<string> | Iterable<string>,
-	{ windowDays, userEmail, referenceTime }: ReduceChurnOptions,
+	{ windowDays, identity, referenceTime }: ReduceChurnOptions,
 ): Promise<ChurnTotals> {
-	const normalizedUserEmail = userEmail.toLowerCase();
 	const commits: ChurnCommit[] = [];
 	let current: ChurnCommit | null = null;
 
 	for await (const line of lines) {
 		if (line.startsWith(HEADER_PREFIX)) {
-			const separatorIndex = line.indexOf(FIELD_SEPARATOR);
-			if (separatorIndex === -1) {
+			// `<date>\x1f<email>\x1f<name>` — three fields (see log-reduction).
+			const parts = line.slice(HEADER_PREFIX.length).split(FIELD_SEPARATOR);
+			if (parts.length < 3) {
 				current = null;
 				continue;
 			}
-			const timestampMillis = Date.parse(
-				line.slice(HEADER_PREFIX.length, separatorIndex),
-			);
-			const authorEmail = line.slice(separatorIndex + 1).toLowerCase();
+			const [rawDate, authorEmail, ...nameParts] = parts;
+			const timestampMillis = Date.parse(rawDate);
+			const authorName = nameParts.join(FIELD_SEPARATOR);
 			// Non-user commits are skipped entirely (published rule above).
 			current =
-				Number.isNaN(timestampMillis) || authorEmail !== normalizedUserEmail
+				Number.isNaN(timestampMillis) ||
+				!isUserCommit(identity, authorEmail, authorName)
 					? null
 					: { timestampMillis, files: [] };
 			if (current !== null) {

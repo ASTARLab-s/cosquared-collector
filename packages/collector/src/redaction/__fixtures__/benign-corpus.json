@@ -42,5 +42,9 @@
 	{
 		"name": "systemBinPath",
 		"input": "PATH includes /usr/local/bin and /opt/homebrew/bin"
+	},
+	{
+		"name": "proseMentioningNotionWithoutAToken",
+		"input": "the ntn_ prefix identifies a Notion integration token in our redaction rules"
 	}
 ]

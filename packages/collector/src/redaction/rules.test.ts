@@ -343,6 +343,26 @@ const fixturesByRule: Record<
 			expected: false,
 		},
 	},
+	"notion-integration-token": {
+		// The surface this rule exists for: a BARE token in free-text prose,
+		// with no `key =` keyword for `generic-api-key` to anchor on.
+		bareTokenInBugReportProse: {
+			input: decodeFixture(
+				"Q0ReT01YS15DRUQKXkVBT0QKRF5EdWt7GGtBeRJNTWFTaXt/fWN7WxxTUx1PGmtFZ38YGGdlaVlpSWFJbWlNc2UcRXMKWV5FWlpPTgpdRVhBQ0RN",
+			),
+			expected: true,
+		},
+		// Length floor: a 30-char body is below any real Notion token.
+		tooShortToBeAToken: {
+			input: "ntn_xaWwiWWeaayWs8G8w4ieKuiS4gWawO",
+			expected: false,
+		},
+		// The prefix alone is documentation, not a credential.
+		prefixMentionedInProse: {
+			input: "the ntn_ prefix identifies a Notion integration token",
+			expected: false,
+		},
+	},
 	jwt: {
 		supabaseShapedAnonKey: {
 			input: decodeFixture(

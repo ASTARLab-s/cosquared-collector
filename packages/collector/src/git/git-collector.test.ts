@@ -47,11 +47,12 @@ async function commitAs(
 	email: string,
 	dateIso: string,
 	message: string,
+	name = "Fixture User",
 ): Promise<void> {
 	await git(
 		[
 			"-c",
-			"user.name=Fixture User",
+			`user.name=${name}`,
 			"-c",
 			`user.email=${email}`,
 			"commit",
@@ -98,7 +99,13 @@ beforeAll(async () => {
 
 	await writeFile(join(repoDir, "other.ts"), "export const other = 2;\n");
 	await git(["add", "other.ts"]);
-	await commitAs(OTHER_EMAIL, COMMIT_2_DATE, "PLANTED: someone else's work");
+	// A genuinely different person: different email AND name → excluded by both.
+	await commitAs(
+		OTHER_EMAIL,
+		COMMIT_2_DATE,
+		"PLANTED: someone else's work",
+		"Other Person",
+	);
 
 	// Uppercase email proves case-insensitive author matching.
 	await writeFile(
@@ -122,8 +129,10 @@ beforeAll(async () => {
 	await git(["add", "index.ts"]);
 	await commitAs(USER_EMAIL, COMMIT_4_DATE, "PLANTED: rework the export");
 
-	// A repo whose local user.email is explicitly empty (overriding any
-	// global config): authorship-scoped events must be absent.
+	// A repo whose local user.email AND user.name are explicitly empty (overriding
+	// any global config): with no identity at all, authorship-scoped events must
+	// be absent. Both are cleared so the result never depends on the ambient
+	// global git identity of the machine running the tests.
 	const noEmailGit = (args: string[], dateIso?: string) =>
 		execFile("git", ["-C", noEmailRepoDir, ...args], {
 			env: {
@@ -149,6 +158,7 @@ beforeAll(async () => {
 		COMMIT_1_DATE,
 	);
 	await noEmailGit(["config", "user.email", ""]);
+	await noEmailGit(["config", "user.name", ""]);
 });
 
 afterAll(async () => {
@@ -235,20 +245,34 @@ describe("GitCollector", () => {
 		]);
 	});
 
-	test("churn_snapshot is absent when user.email is unset", async () => {
+	test("authorship-scoped events are absent when no identity is configured", async () => {
 		const events = await new GitCollector().collect({
 			repoPath: noEmailRepoDir,
 		});
-		// Authorship-scoped events (commits, churn) drop; the snapshot stays.
+		// Commits and churn drop (no identity to attribute them to); the
+		// authorship-independent snapshot stays.
 		expect(events.map((event) => event.type)).toEqual(["repo_snapshot"]);
 	});
 
-	test("excludes other authors' commits", async () => {
+	test("excludes other authors' commits (different email AND name)", async () => {
 		const events = await collectRepoEvents();
 		const commitTimestamps = events
 			.filter((event) => event.type === "commit")
 			.map((event) => event.timestamp);
 		expect(commitTimestamps).not.toContain("2026-06-02T09:00:00.000Z");
+	});
+
+	test("extra identities attribute a commit made under another address", async () => {
+		// The git_emails/git_names escape hatch (config.toml → CollectorOptions):
+		// declaring the other address makes its commit count as the user's.
+		const events = await new GitCollector().collect({
+			repoPath: repoDir,
+			identities: { emails: [OTHER_EMAIL] },
+		});
+		const commitTimestamps = events
+			.filter((event) => event.type === "commit")
+			.map((event) => event.timestamp);
+		expect(commitTimestamps).toContain("2026-06-02T09:00:00.000Z");
 	});
 
 	test("since filters out events at or before the cutoff", async () => {

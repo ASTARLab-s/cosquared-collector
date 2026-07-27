@@ -1,5 +1,5 @@
 {
-	"schema_version": "1.4.0",
+	"schema_version": "1.5.0",
 	"client": {
 		"cli_version": "0.1.0",
 		"platform": "test-os"

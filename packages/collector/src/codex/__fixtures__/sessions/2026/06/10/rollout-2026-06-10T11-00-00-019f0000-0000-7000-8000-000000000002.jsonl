@@ -1,0 +1,6 @@
+{"timestamp": "2026-06-10T11:00:00.000Z", "type": "session_meta", "payload": {"id": "019f0000-0000-7000-8000-000000000002", "cwd": "/tmp/fixture-repo", "cli_version": "0.142.0"}}
+{ this is not valid json ]
+{"timestamp": "2026-06-10T11:00:05.000Z", "type": "event_msg", "payload": {"type": "user_message", "message": "do the thing PLANTED_DRIFT_PROMPT"}}
+{"timestamp": "2026-06-10T11:00:10.000Z", "type": "response_item", "payload": {"type": "future_unknown_type", "blob": "PLANTED_FUTURE"}}
+{"timestamp": "2026-06-10T11:00:15.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "quantum_tool", "arguments": "{}", "call_id": "call_d1"}}
+{"timestamp": "2026-06-10T11:00:20.000Z", "type": "event_msg", "payload": {"type": "task_complete", "turn_id": "t9"}}

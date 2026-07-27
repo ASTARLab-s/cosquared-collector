@@ -11,6 +11,11 @@ import {
 	reduceChurnLines,
 } from "./churn-reduction";
 import { deriveRepoSnapshot, mapCommitsToEvents } from "./event-mapping";
+import {
+	buildCommitIdentity,
+	type CommitIdentity,
+	hasIdentity,
+} from "./identity";
 import { type ReducedCommit, reduceLogLines } from "./log-reduction";
 
 const execFile = promisify(execFileCallback);
@@ -18,13 +23,14 @@ const execFile = promisify(execFileCallback);
 /**
  * Reads a repo's git metadata and converts it into the normalized
  * {@link SessionEvent} stream: one `commit` event per commit authored by
- * the repo's configured `user.email`, plus one `repo_snapshot` of
- * repo-shape counts at HEAD.
+ * any of the user's identities (effective `user.email`/`user.name` plus any
+ * configured extras — see {@link resolveIdentity}), plus one `repo_snapshot`
+ * of repo-shape counts at HEAD.
  *
  * Privacy by construction (CLAUDE.md invariant #1): commit messages are
- * never read (the log format string does not request them); file paths
- * and the author email are inspected transiently and reduced to counts
- * and booleans; every returned batch is re-validated against the strict
+ * never read (the log format string does not request them); file paths and
+ * the author email/name are inspected transiently and reduced to counts and
+ * booleans; every returned batch is re-validated against the strict
  * `SessionEventSchema`. Strictly read-only: the repo is never written,
  * moved, or locked.
  *
@@ -64,6 +70,7 @@ export class GitCollector implements Collector {
 	async collect({
 		repoPath,
 		since,
+		identities,
 	}: CollectorOptions): Promise<SessionEvent[]> {
 		const repo = resolve(repoPath);
 		if (!(await this.isWorkTree(repo))) {
@@ -72,14 +79,14 @@ export class GitCollector implements Collector {
 
 		const allEvents: SessionEvent[] = [];
 
-		// No user.email → skip commit events but still emit the snapshot
+		// No known identity → skip commit events but still emit the snapshot
 		// (the snapshot is authorship-independent; churn is NOT — it measures
-		// the user's own rework, so it is skipped too). The email lives only
-		// in this local and inside the reducers' comparisons — never stored.
-		const userEmail = await this.configuredUserEmail(repo);
-		if (userEmail !== null) {
+		// the user's own rework, so it is skipped too). Identities live only in
+		// this local and inside the reducers' comparisons — never stored.
+		const identity = await this.resolveIdentity(repo, identities);
+		if (hasIdentity(identity)) {
 			const commits = await this.streamCommitLog(repo, since);
-			allEvents.push(...mapCommitsToEvents(commits, userEmail));
+			allEvents.push(...mapCommitsToEvents(commits, identity));
 		}
 
 		// No HEAD (fresh `git init`) → no deterministic timestamp → no
@@ -91,8 +98,8 @@ export class GitCollector implements Collector {
 			if (snapshot !== null) {
 				allEvents.push(snapshot);
 			}
-			if (userEmail !== null) {
-				const churn = await this.churnSnapshot(repo, headIso, userEmail);
+			if (hasIdentity(identity)) {
+				const churn = await this.churnSnapshot(repo, headIso, identity);
 				if (churn !== null) {
 					allEvents.push(churn);
 				}
@@ -124,11 +131,36 @@ export class GitCollector implements Collector {
 		return result !== null && result.trim() === "true";
 	}
 
-	/** TRANSIENT — the returned email is compared and dropped, never emitted. */
-	private async configuredUserEmail(repo: string): Promise<string | null> {
-		const result = await this.git(repo, ["config", "user.email"]);
-		const email = result?.trim() ?? "";
-		return email.length > 0 ? email : null;
+	/**
+	 * The user's git identities for THIS repo: the effective `user.email` and
+	 * `user.name` (repo-local config overriding global, exactly as git resolves
+	 * them for new commits), plus any extra emails/names the caller supplies from
+	 * `~/.cosquared/config.toml`. A commit is attributed if its author email OR
+	 * name matches any of these — see {@link CommitIdentity}. All values are
+	 * TRANSIENT: compared and dropped, never emitted.
+	 */
+	private async resolveIdentity(
+		repo: string,
+		extras: CollectorOptions["identities"],
+	): Promise<CommitIdentity> {
+		const [email, name] = await Promise.all([
+			this.gitConfigValue(repo, "user.email"),
+			this.gitConfigValue(repo, "user.name"),
+		]);
+		return buildCommitIdentity({
+			emails: [...(email !== null ? [email] : []), ...(extras?.emails ?? [])],
+			names: [...(name !== null ? [name] : []), ...(extras?.names ?? [])],
+		});
+	}
+
+	/** A single `git config <key>` value, trimmed; null when unset/empty. */
+	private async gitConfigValue(
+		repo: string,
+		key: string,
+	): Promise<string | null> {
+		const result = await this.git(repo, ["config", key]);
+		const value = result?.trim() ?? "";
+		return value.length > 0 ? value : null;
 	}
 
 	/**
@@ -150,15 +182,24 @@ export class GitCollector implements Collector {
 		since: Date | undefined,
 	): Promise<ReducedCommit[]> {
 		return new Promise((resolveCommits) => {
-			const child = spawn(this.gitBinary, [
-				"-C",
-				repo,
-				"log",
-				"--no-merges",
-				"--numstat",
-				"--format=%x1e%cI%x1f%ae",
-				...(since ? [`--since=${since.toISOString()}`] : []),
-			]);
+			// stdio ["ignore","pipe","ignore"]: we consume ONLY stdout. Leaving
+			// stdin/stderr as inheritable pipes lets a child git spawns (e.g.
+			// `git-lfs filter-process` in an LFS repo) inherit and hold them open,
+			// which can stall the read; and an unread stderr pipe deadlocks if git
+			// ever writes >64KB to it. Ignoring both removes those hazards.
+			const child = spawn(
+				this.gitBinary,
+				[
+					"-C",
+					repo,
+					"log",
+					"--no-merges",
+					"--numstat",
+					"--format=%x1e%cI%x1f%ae%x1f%an",
+					...(since ? [`--since=${since.toISOString()}`] : []),
+				],
+				{ stdio: ["ignore", "pipe", "ignore"] },
+			);
 			const reduced = reduceLogLines(
 				createInterface({
 					input: child.stdout,
@@ -205,7 +246,7 @@ export class GitCollector implements Collector {
 	private async churnSnapshot(
 		repo: string,
 		headIso: string,
-		userEmail: string,
+		identity: CommitIdentity,
 	): Promise<SessionEvent | null> {
 		const scanWindowMillis = CHURN_WINDOW_DAYS * 2 * 86_400_000;
 		const scanSinceIso = new Date(
@@ -213,7 +254,7 @@ export class GitCollector implements Collector {
 		).toISOString();
 		const totals = await this.streamChurnLog(repo, scanSinceIso, {
 			windowDays: CHURN_WINDOW_DAYS,
-			userEmail,
+			identity,
 			referenceTime: headIso,
 		});
 		if (totals === null) {
@@ -234,18 +275,28 @@ export class GitCollector implements Collector {
 	private streamChurnLog(
 		repo: string,
 		scanSinceIso: string,
-		options: { windowDays: number; userEmail: string; referenceTime: string },
+		options: {
+			windowDays: number;
+			identity: CommitIdentity;
+			referenceTime: string;
+		},
 	): Promise<ChurnTotals | null> {
 		return new Promise((resolveTotals) => {
-			const child = spawn(this.gitBinary, [
-				"-C",
-				repo,
-				"log",
-				"--no-merges",
-				"--numstat",
-				"--format=%x1e%cI%x1f%ae",
-				`--since=${scanSinceIso}`,
-			]);
+			// See streamCommitLog: consume only stdout; ignore stdin/stderr so an
+			// inherited pipe (e.g. git-lfs) or a large stderr write can't stall us.
+			const child = spawn(
+				this.gitBinary,
+				[
+					"-C",
+					repo,
+					"log",
+					"--no-merges",
+					"--numstat",
+					"--format=%x1e%cI%x1f%ae%x1f%an",
+					`--since=${scanSinceIso}`,
+				],
+				{ stdio: ["ignore", "pipe", "ignore"] },
+			);
 			const reduced = reduceChurnLines(
 				createInterface({
 					input: child.stdout,

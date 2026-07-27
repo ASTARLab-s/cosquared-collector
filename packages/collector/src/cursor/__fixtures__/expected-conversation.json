@@ -1,0 +1,138 @@
+[
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "session_start",
+		"toolVersion": null
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "user_prompt",
+		"wordCount": 9,
+		"isQuestion": true,
+		"referencesPlanArtifact": true
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "explanation_request"
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "tool_call",
+		"toolName": "run_terminal_cmd",
+		"category": "execute"
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "test_run",
+		"passed": true,
+		"framework": "pytest"
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "tool_call",
+		"toolName": "edit_file_v2",
+		"category": "file_edit"
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "change_accepted",
+		"followedByValidation": true
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "tool_call",
+		"toolName": "run_terminal_cmd",
+		"category": "execute"
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "test_run",
+		"passed": true,
+		"framework": "npm-script"
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "tool_call",
+		"toolName": "search_replace",
+		"category": "file_edit"
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "change_rejected",
+		"followedByValidation": true
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "tool_call",
+		"toolName": "create_plan",
+		"category": "other"
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "plan_artifact_created",
+		"artifactKind": "plan_doc"
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "tool_call",
+		"toolName": "run_terminal_cmd",
+		"category": "execute"
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "error_encountered",
+		"resolved": true
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "tool_call",
+		"toolName": "edit_file_v2",
+		"category": "file_edit"
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:00:00.000Z",
+		"type": "change_accepted",
+		"followedByValidation": null
+	},
+	{
+		"sessionId": "11111111-1111-4111-8111-111111111111",
+		"source": "cursor",
+		"timestamp": "2026-06-10T10:05:00.000Z",
+		"type": "session_end",
+		"durationMinutes": 5
+	}
+]

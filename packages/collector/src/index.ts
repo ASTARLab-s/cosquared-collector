@@ -2,7 +2,15 @@ export {
 	ClaudeCodeCollector,
 	encodeProjectDirName,
 } from "./claude-code/claude-code-collector";
+export {
+	CodexCollector,
+	defaultCodexSessionsDir,
+} from "./codex/codex-collector";
 export type { Collector, CollectorOptions } from "./collector";
+export {
+	CursorCollector,
+	defaultCursorUserDir,
+} from "./cursor/cursor-collector";
 export type { DiscoveredRepo } from "./discovery/discover";
 export { discoverRepositories } from "./discovery/discover";
 export type { ChurnTotals } from "./git/churn-reduction";
@@ -37,3 +45,4 @@ export type {
 } from "./scoring/types";
 // Published methodology: every weight, threshold, and confidence rule.
 export * from "./scoring/weights";
+export { COLLECTOR_VERSION } from "./version";

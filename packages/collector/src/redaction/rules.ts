@@ -249,6 +249,22 @@ export const REDACTION_RULES: ReadonlyArray<RedactionRule> = [
 		pattern: /\bre_[a-zA-Z0-9_]{20,}\b/g,
 		minEntropy: 2,
 	},
+	// Product-stack rule gitleaks lacks: Notion internal-integration token.
+	// First-class rather than left to `generic-api-key` because the highest-risk
+	// surface is a BARE token pasted into prose — a user describing a bug in the
+	// in-app report form has no `key =` keyword for the generic rule to anchor
+	// on, and the value would sail through. Notion's current tokens are
+	// `ntn_` + a ~46-char base62 body (the legacy `secret_…` form is covered by
+	// `generic-api-key` when assigned); the 40–64 length floor plus the entropy
+	// gate keeps ordinary prose that happens to contain "ntn_" untouched.
+	{
+		id: "notion-integration-token",
+		category: "secret",
+		description: "Notion integration token",
+		pattern: /\b(ntn_[A-Za-z0-9]{40,64})(?=[\x60'"\s;]|\\[nr]|$)/g,
+		secretGroup: 1,
+		minEntropy: 3,
+	},
 	// gitleaks:jwt — three-segment JSON Web Token. Supabase anon/service keys
 	// are JWTs, making this our stack's most likely leak (PRD §8 Supabase row).
 	{

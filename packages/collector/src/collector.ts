@@ -12,6 +12,17 @@ export interface CollectorOptions {
 	repoPath: string;
 	/** Only return events after this time (incremental sync). */
 	since?: Date;
+	/**
+	 * Extra git identities that also count as "the user", merged with the ones the
+	 * git collector reads from the repo's own config (effective `user.email` +
+	 * `user.name`). Lets a developer who commits under several emails/names declare
+	 * the rest (`git_emails`/`git_names` in `~/.cosquared/config.toml`) so none of
+	 * their commits are dropped. Other collectors ignore it.
+	 */
+	identities?: {
+		emails?: readonly string[];
+		names?: readonly string[];
+	};
 }
 
 /**

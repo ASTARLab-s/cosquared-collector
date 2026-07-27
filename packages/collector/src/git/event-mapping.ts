@@ -5,6 +5,7 @@ import {
 	isDocFilePath,
 	isTestFilePath,
 } from "./heuristics";
+import { type CommitIdentity, isUserCommit } from "./identity";
 import type { ReducedCommit } from "./log-reduction";
 
 /**
@@ -24,19 +25,19 @@ import type { ReducedCommit } from "./log-reduction";
  * Discipline's tests-before-commit pattern (PRD §7.3).
  *
  * Identity is used TRANSIENTLY for attribution and never transmitted
- * (PRD §4 data handling): the email exists only inside this comparison
- * and appears in no event. Matching is case-insensitive — git stores
- * whatever case was configured, and the same human routinely has both
- * `Foo@Bar.com` and `foo@bar.com` in history.
+ * (PRD §4 data handling): the email and name exist only inside this
+ * comparison and appear in no event. A commit counts as the user's if its
+ * author email OR name matches a known identity ({@link isUserCommit}) — the
+ * name match recovers commits made under a secondary email (work/personal/
+ * GitHub-noreply), which email-only matching silently dropped.
  */
 export function mapCommitsToEvents(
 	commits: ReducedCommit[],
-	userEmail: string,
+	identity: CommitIdentity,
 ): SessionEvent[] {
-	const normalizedUserEmail = userEmail.toLowerCase();
 	return commits
-		.filter(
-			(commit) => commit.authorEmail.toLowerCase() === normalizedUserEmail,
+		.filter((commit) =>
+			isUserCommit(identity, commit.authorEmail, commit.authorName),
 		)
 		.map(
 			(commit): SessionEvent => ({

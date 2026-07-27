@@ -1,14 +1,21 @@
 import { describe, expect, test } from "vitest";
 import { deriveRepoSnapshot, mapCommitsToEvents } from "./event-mapping";
+import { buildCommitIdentity } from "./identity";
 import type { ReducedCommit } from "./log-reduction";
 
 const USER_EMAIL = "fixture@example.com";
+const USER_NAME = "Fixture User";
 const OTHER_EMAIL = "someone-else@example.com";
+const OTHER_NAME = "Other Person";
+
+/** The user identity used across these tests: one primary email + display name. */
+const USER = buildCommitIdentity({ emails: [USER_EMAIL], names: [USER_NAME] });
 
 function reducedCommit(overrides: Partial<ReducedCommit>): ReducedCommit {
 	return {
 		timestamp: "2026-06-11T10:00:00.000Z",
 		authorEmail: USER_EMAIL,
+		authorName: USER_NAME,
 		filesChanged: 1,
 		insertions: 10,
 		deletions: 2,
@@ -18,16 +25,17 @@ function reducedCommit(overrides: Partial<ReducedCommit>): ReducedCommit {
 }
 
 describe("mapCommitsToEvents", () => {
-	test("filtersOutOtherAuthors: only the user's commits become events", () => {
+	test("filtersOutOtherAuthors: a different person (different email AND name) is excluded", () => {
 		const events = mapCommitsToEvents(
 			[
 				reducedCommit({ timestamp: "2026-06-11T10:00:00.000Z" }),
 				reducedCommit({
 					timestamp: "2026-06-10T09:00:00.000Z",
 					authorEmail: OTHER_EMAIL,
+					authorName: OTHER_NAME,
 				}),
 			],
-			USER_EMAIL,
+			USER,
 		);
 		expect(events).toHaveLength(1);
 		expect(events[0]).toMatchObject({
@@ -37,17 +45,40 @@ describe("mapCommitsToEvents", () => {
 	});
 
 	test("matches the user email case-insensitively", () => {
+		// Name deliberately differs, so a match here proves EMAIL matching.
 		const events = mapCommitsToEvents(
-			[reducedCommit({ authorEmail: "Fixture@Example.COM" })],
-			USER_EMAIL,
+			[
+				reducedCommit({
+					authorEmail: "Fixture@Example.COM",
+					authorName: OTHER_NAME,
+				}),
+			],
+			USER,
+		);
+		expect(events).toHaveLength(1);
+	});
+
+	test("attributes a commit made under a SECONDARY email by matching the name", () => {
+		// The reported bug: same person, different email (work/personal/noreply).
+		const events = mapCommitsToEvents(
+			[
+				reducedCommit({
+					authorEmail: "personal@gmail.com",
+					authorName: "fixture USER",
+				}),
+			],
+			USER,
 		);
 		expect(events).toHaveLength(1);
 	});
 
 	test("emailNeverInOutput: serialized events contain no email", () => {
 		const events = mapCommitsToEvents(
-			[reducedCommit({}), reducedCommit({ authorEmail: OTHER_EMAIL })],
-			USER_EMAIL,
+			[
+				reducedCommit({}),
+				reducedCommit({ authorEmail: OTHER_EMAIL, authorName: OTHER_NAME }),
+			],
+			USER,
 		);
 		const serialized = JSON.stringify(events);
 		expect(serialized).not.toContain(USER_EMAIL);
@@ -62,7 +93,7 @@ describe("mapCommitsToEvents", () => {
 				reducedCommit({ timestamp: "2026-06-10T09:00:00.000Z" }),
 				reducedCommit({ timestamp: "2026-06-09T08:00:00.000Z" }),
 			],
-			USER_EMAIL,
+			USER,
 		);
 		expect(events.map((event) => event.timestamp)).toEqual([
 			"2026-06-09T08:00:00.000Z",

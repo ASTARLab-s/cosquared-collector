@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { type ChurnTotals, reduceChurnLines } from "./churn-reduction";
+import { buildCommitIdentity } from "./identity";
 
 /**
  * Table-driven fixtures pinning the published churn rule (PRD §7.3
@@ -7,17 +8,24 @@ import { type ChurnTotals, reduceChurnLines } from "./churn-reduction";
  * documentation: each entry shows exactly which add→delete arcs count as
  * churn and which do not.
  *
- * Fixture lines mirror real `git log --format=%x1e%cI%x1f%ae --numstat`
- * output: NEWEST commit first, `\x1e<date>\x1f<email>` headers, blank
+ * Fixture lines mirror real `git log --format=%x1e%cI%x1f%ae%x1f%an --numstat`
+ * output: NEWEST commit first, `\x1e<date>\x1f<email>\x1f<name>` headers, blank
  * separator lines.
  */
 
 const USER_EMAIL = "fixture@example.com";
+const USER_NAME = "Fixture User";
 const OTHER_EMAIL = "someone-else@example.com";
 const REFERENCE_TIME = "2026-06-14T00:00:00.000Z";
 
-function header(dateIso: string, email: string): string {
-	return `\x1e${dateIso}\x1f${email}`;
+/** The user identity for these fixtures. The USER_EMAIL commits below match by
+ * EMAIL, so headers default to a non-user name — proving email attribution and
+ * keeping the OTHER_EMAIL commits excluded by both email and name. */
+const USER = buildCommitIdentity({ emails: [USER_EMAIL], names: [USER_NAME] });
+const NON_USER_NAME = "Someone Else";
+
+function header(dateIso: string, email: string, name = NON_USER_NAME): string {
+	return `\x1e${dateIso}\x1f${email}\x1f${name}`;
 }
 
 function numstat(
@@ -152,7 +160,7 @@ describe("reduceChurnLines (churn methodology)", () => {
 	}) => {
 		const totals = await reduceChurnLines(lines, {
 			windowDays: 14,
-			userEmail: USER_EMAIL,
+			identity: USER,
 			referenceTime: REFERENCE_TIME,
 		});
 		expect(totals).toEqual(expected);
@@ -164,7 +172,18 @@ describe("reduceChurnLines (churn methodology)", () => {
 				header("2026-06-10T00:00:00Z", "Fixture@Example.COM"),
 				numstat(5, 0, "src/a.ts"),
 			],
-			{ windowDays: 14, userEmail: USER_EMAIL, referenceTime: REFERENCE_TIME },
+			{ windowDays: 14, identity: USER, referenceTime: REFERENCE_TIME },
+		);
+		expect(totals.linesAdded).toBe(5);
+	});
+
+	test("attributes a commit by NAME when the email differs (secondary email)", async () => {
+		const totals = await reduceChurnLines(
+			[
+				header("2026-06-10T00:00:00Z", "personal@gmail.com", USER_NAME),
+				numstat(5, 0, "src/a.ts"),
+			],
+			{ windowDays: 14, identity: USER, referenceTime: REFERENCE_TIME },
 		);
 		expect(totals.linesAdded).toBe(5);
 	});

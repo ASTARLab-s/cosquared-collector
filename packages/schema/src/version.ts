@@ -4,4 +4,4 @@
  * uploads/parsers are incompatible. Collectors stamp this into every payload
  * so the server can validate against the exact schema the CLI used.
  */
-export const SCHEMA_VERSION = "1.4.0";
+export const SCHEMA_VERSION = "1.5.0";

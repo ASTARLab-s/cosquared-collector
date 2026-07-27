@@ -27,8 +27,9 @@ run it, and confirm for yourself:
 
 | Package | Purpose |
 |---------|---------|
-| `packages/collector` | Collectors (Claude Code today; Cursor and Codex CLI to come), the redaction pipeline, and the full scoring methodology — signal definitions, criteria, thresholds, and weights (`src/scoring/weights.ts`). |
+| `packages/collector` | Collectors (Claude Code, Codex CLI, and Cursor — read-only, metadata-only), the redaction pipeline, and the full scoring methodology — signal definitions, criteria, thresholds, and weights (`src/scoring/weights.ts`). |
 | `packages/schema` | The versioned telemetry schema: the normalized `SessionEvent` types every collector emits, and `AnalysisPayload` — the exact, name/path-free shape that would be uploaded. |
+| `packages/eval-schema` | The strict, no-free-text external Evaluation API envelope, request contract, result types, and canonical digest serialization. |
 
 ## What is deliberately NOT here
 

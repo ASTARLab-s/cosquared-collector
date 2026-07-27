@@ -4,9 +4,9 @@ import { isTestFilePath } from "./heuristics";
  * Pure, streaming reduction of raw `git log` output lines to per-commit
  * structural stats — no filesystem, no network, fully unit-testable.
  *
- * The collector invokes git with `--format=%x1e%cI%x1f%ae --numstat`, so
+ * The collector invokes git with `--format=%x1e%cI%x1f%ae%x1f%an --numstat`, so
  * the line grammar this module parses is:
- *   header line:  `\x1e<committerDateIso>\x1f<authorEmail>`
+ *   header line:  `\x1e<committerDateIso>\x1f<authorEmail>\x1f<authorName>`
  *   numstat line: `<insertions>\t<deletions>\t<path>` (`-` for binary)
  *   blank lines between records
  *
@@ -19,14 +19,16 @@ import { isTestFilePath } from "./heuristics";
 
 /** Record separator emitted by `%x1e` at the start of each header line. */
 const HEADER_PREFIX = "\x1e";
-/** Field separator emitted by `%x1f` between date and email. */
+/** Field separator emitted by `%x1f` between the date, email, and name fields. */
 const FIELD_SEPARATOR = "\x1f";
 
 export interface ReducedCommit {
 	/** Committer date, normalized to UTC `Z` form (see header parsing note). */
 	timestamp: string;
-	/** TRANSIENT — used for exact-match author filtering, then dropped. */
+	/** TRANSIENT — used for author attribution, then dropped. */
 	authorEmail: string;
+	/** TRANSIENT — used for author attribution, then dropped. */
+	authorName: string;
 	filesChanged: number;
 	insertions: number;
 	deletions: number;
@@ -42,18 +44,22 @@ export interface ReducedCommit {
  * unparseable date drops the commit rather than failing the run.
  */
 function parseHeaderLine(line: string): ReducedCommit | null {
-	const separatorIndex = line.indexOf(FIELD_SEPARATOR);
-	if (separatorIndex === -1) {
+	// `<date>\x1f<email>\x1f<name>` — split into exactly three fields. A name
+	// can't contain the \x1f control char, but if git ever emitted one, fold the
+	// remainder back into the name rather than dropping the field.
+	const parts = line.slice(HEADER_PREFIX.length).split(FIELD_SEPARATOR);
+	if (parts.length < 3) {
 		return null;
 	}
-	const rawDate = line.slice(HEADER_PREFIX.length, separatorIndex);
+	const [rawDate, authorEmail, ...nameParts] = parts;
 	const parsedMillis = Date.parse(rawDate);
 	if (Number.isNaN(parsedMillis)) {
 		return null;
 	}
 	return {
 		timestamp: new Date(parsedMillis).toISOString(),
-		authorEmail: line.slice(separatorIndex + 1),
+		authorEmail,
+		authorName: nameParts.join(FIELD_SEPARATOR),
 		filesChanged: 0,
 		insertions: 0,
 		deletions: 0,
