@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { SessionEvent } from "@cosquared/schema";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -319,4 +319,80 @@ describe("GitCollector", () => {
 			expect(serialized).not.toContain(raw);
 		}
 	});
+
+	test("a hung git binary degrades to no events instead of stalling", async () => {
+		const hangAll = await writeFakeGit(`#!/bin/sh
+sleep 30
+`);
+		const started = Date.now();
+		const events = await new GitCollector({
+			gitBinary: hangAll,
+			commandTimeoutMs: 200,
+			stallTimeoutMs: 200,
+		}).collect({ repoPath: repoDir });
+		expect(events).toEqual([]);
+		expect(Date.now() - started).toBeLessThan(2_000);
+		await rm(dirname(hangAll), { recursive: true, force: true });
+	});
+
+	test("a silent git log is killed and degrades rather than hanging", async () => {
+		const hangLog = await writeFakeGit(`#!/bin/sh
+case "$*" in
+  *--numstat*) sleep 30 ;;
+  *rev-parse*) echo true ;;
+  *user.email*) echo hanglog@example.com ;;
+  *user.name*) echo 'Hang Log' ;;
+  *ls-files*) printf 'a.ts\\0' ;;
+  *--format=%cI*) echo '2026-06-01T08:00:00Z' ;;
+  *) exit 0 ;;
+esac
+`);
+		const started = Date.now();
+		const events = await new GitCollector({
+			gitBinary: hangLog,
+			commandTimeoutMs: 2_000,
+			stallTimeoutMs: 200,
+		}).collect({ repoPath: repoDir });
+		expect(Date.now() - started).toBeLessThan(2_000);
+		expect(events.filter((event) => event.type === "commit")).toEqual([]);
+		await rm(dirname(hangLog), { recursive: true, force: true });
+	});
+
+	test("a slow-but-progressing git log is not killed", async () => {
+		const slowLog = await writeFakeGit(`#!/bin/sh
+case "$*" in
+  *--numstat*)
+    printf '\\0362026-06-01T08:00:00Z\\037slow@example.com\\037Slow User\\n1\\t0\\ta.ts\\n'
+    sleep 0.15
+    printf '\\0362026-06-02T08:00:00Z\\037slow@example.com\\037Slow User\\n1\\t0\\tb.ts\\n'
+    ;;
+  *rev-parse*) echo true ;;
+  *user.email*) echo slow@example.com ;;
+  *user.name*) echo 'Slow User' ;;
+  *ls-files*) printf 'a.ts\\0' ;;
+  *--format=%cI*) echo '2026-06-02T08:00:00Z' ;;
+  *) exit 0 ;;
+esac
+`);
+		const events = await new GitCollector({
+			gitBinary: slowLog,
+			commandTimeoutMs: 2_000,
+			stallTimeoutMs: 400,
+		}).collect({ repoPath: repoDir });
+		expect(
+			events
+				.filter((event) => event.type === "commit")
+				.map((event) => event.timestamp)
+				.sort(),
+		).toEqual(["2026-06-01T08:00:00.000Z", "2026-06-02T08:00:00.000Z"]);
+		await rm(dirname(slowLog), { recursive: true, force: true });
+	});
 });
+
+async function writeFakeGit(script: string): Promise<string> {
+	const dir = await mkdtemp(join(tmpdir(), "cosquared-fake-git-"));
+	const path = join(dir, "git");
+	await writeFile(path, script, { encoding: "utf8" });
+	await chmod(path, 0o755);
+	return path;
+}

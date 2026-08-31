@@ -3,6 +3,7 @@ import {
 	categorizeToolName,
 	classifyCommand,
 	isCommandInvocation,
+	isHarnessAuthoredPrompt,
 	isHumanPrompt,
 	promptText,
 } from "./heuristics";
@@ -164,5 +165,67 @@ describe("categorizeToolName", () => {
 
 	test.each(Object.entries(fixtures))("%s", (_name, { name, expected }) => {
 		expect(categorizeToolName(name)).toBe(expected);
+	});
+});
+
+describe("isHarnessAuthoredPrompt", () => {
+	/**
+	 * Grounded in an on-disk inventory (calibration 2026-08-31): 11 of 268
+	 * counted prompts were harness text, 6% on one repo. These lines set no
+	 * `isMeta` flag, so text is the only discriminator.
+	 */
+	test.each([
+		["[Request interrupted by user]", true],
+		["[Request interrupted by user for tool use]", true],
+		[
+			"This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion.",
+			true,
+		],
+		// Human prose that merely mentions the same words is not harness text.
+		["the request interrupted by user was the third one", false],
+		["explain why this session is being slow", false],
+		["fix the retry logic", false],
+		["", false],
+	])("%j -> %s", (text, expected) => {
+		expect(isHarnessAuthoredPrompt(text)).toBe(expected);
+	});
+
+	test("matches after leading whitespace", () => {
+		expect(isHarnessAuthoredPrompt("\n  [Request interrupted by user]")).toBe(
+			true,
+		);
+	});
+});
+
+describe("isHumanPrompt excludes harness-authored lines", () => {
+	test("an interrupt marker is not a prompt the human typed", () => {
+		expect(isHumanPrompt(userLine("[Request interrupted by user]"))).toBe(
+			false,
+		);
+	});
+
+	test("an interrupt marker in a text block is not a prompt either", () => {
+		expect(
+			isHumanPrompt(
+				userLine([{ type: "text", text: "[Request interrupted by user]" }]),
+			),
+		).toBe(false);
+	});
+
+	test("a compaction preamble is not a prompt the human typed", () => {
+		// Its machine-written summary is a NUMBERED list, so left alone it
+		// read as the developer laying out ordered steps and credited the
+		// session as framed (calibration 2026-08-31).
+		expect(
+			isHumanPrompt(
+				userLine(
+					"This session is being continued from a previous conversation that ran out of context. Summary: 1. Primary Request. 2. Key Decisions.",
+				),
+			),
+		).toBe(false);
+	});
+
+	test("an ordinary typed prompt still counts", () => {
+		expect(isHumanPrompt(userLine("first plan it, then build it"))).toBe(true);
 	});
 });

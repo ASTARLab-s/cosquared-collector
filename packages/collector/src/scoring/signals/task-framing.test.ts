@@ -37,6 +37,39 @@ describe("signals: taskFraming", () => {
 		]);
 	});
 
+	test("firstPromptDescribingOrderedStepsCountsAsFramed", () => {
+		// Structuring the work IN the prompt is planning even with no plan
+		// file: "First … Then …" states the sequence before any generation.
+		const { sessions } = segmentSessions([
+			prompt("s1", T0, { describesOrderedSteps: true }),
+			toolCall("s1", T1, "file_edit"),
+		]);
+		const signal = taskFraming(sessions);
+		expect(signal.value).toBe(100);
+		expect(signal.evidence[0]).toMatchObject({
+			kind: "framed_sessions",
+			numerator: 1,
+			denominator: 1,
+		});
+		// The citation is the prompt itself — the checkable framing act.
+		expect(signal.evidence[0].refs).toEqual([
+			{ sessionId: "s1", source: "claude-code", timestamp: T0 },
+		]);
+	});
+
+	test("orderedStepsOnlyCountOnTheFirstPrompt", () => {
+		// Framing happens up front; sequencing a later turn is mid-flight
+		// course correction, not framing (same scoping as plan references).
+		const { sessions } = segmentSessions([
+			prompt("s1", T0),
+			toolCall("s1", T1, "file_edit"),
+			prompt("s1", T2, { describesOrderedSteps: true }),
+		]);
+		const signal = taskFraming(sessions);
+		expect(signal.value).toBe(0);
+		expect(signal.evidence[0]).toMatchObject({ numerator: 0, denominator: 1 });
+	});
+
 	test("artifactCreatedAfterFirstEditIsNotFraming", () => {
 		const { sessions } = segmentSessions([
 			prompt("s1", T0),
@@ -53,18 +86,22 @@ describe("signals: taskFraming", () => {
 		expect(taskFraming(sessions).value).toBe(100);
 	});
 
-	test("longFirstPromptCountsAsFramed at the 40-word threshold", () => {
-		const framed = segmentSessions([prompt("s1", T0, { wordCount: 40 })]);
-		const unframed = segmentSessions([prompt("s1", T0, { wordCount: 39 })]);
-		expect(taskFraming(framed.sessions).value).toBe(100);
-		expect(taskFraming(unframed.sessions).value).toBe(0);
+	test("promptLengthAloneDoesNotFrame", () => {
+		// 2026-08-25 calibration: full credit for long prompts saturated
+		// prompt-heavy repos; half credit re-saturated two of six repos.
+		// Length is not structure — a 200-word first prompt without a plan
+		// reference earns nothing.
+		const { sessions } = segmentSessions([
+			prompt("s1", T0, { wordCount: 200 }),
+		]);
+		expect(taskFraming(sessions).value).toBe(0);
 	});
 
 	test("onlyTheFirstPromptFramesTheSession", () => {
-		// A long second prompt does not retroactively frame the task.
+		// A plan reference in a second prompt does not retroactively frame.
 		const { sessions } = segmentSessions([
 			prompt("s1", T0, { wordCount: 5 }),
-			prompt("s1", T1, { wordCount: 80 }),
+			prompt("s1", T1, { referencesPlanArtifact: true }),
 		]);
 		expect(taskFraming(sessions).value).toBe(0);
 	});

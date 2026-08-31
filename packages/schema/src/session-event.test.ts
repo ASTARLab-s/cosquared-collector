@@ -32,6 +32,7 @@ const validFixtures: Record<string, unknown> = {
 		wordCount: 142,
 		isQuestion: false,
 		referencesPlanArtifact: true,
+		describesOrderedSteps: false,
 	},
 	fileEditToolCall: {
 		sessionId: "sess-001",

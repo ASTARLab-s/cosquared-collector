@@ -1,6 +1,7 @@
 import type { SessionEvent } from "@cosquared/schema";
 import {
 	countWords,
+	describesOrderedSteps,
 	detectTestRun,
 	isExplanationRequest,
 	isQuestion,
@@ -252,6 +253,7 @@ export function mapCursorConversationToEvents(
 				wordCount: countWords(promptText),
 				isQuestion: isQuestion(promptText),
 				referencesPlanArtifact: referencesPlanArtifact(promptText),
+				describesOrderedSteps: describesOrderedSteps(promptText),
 			});
 			if (isExplanationRequest(promptText)) {
 				events.push({

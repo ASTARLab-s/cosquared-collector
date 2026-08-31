@@ -1,13 +1,15 @@
 import type { SessionEvent } from "@cosquared/schema";
+import { hashPrompt } from "../heuristics/conversation-dedupe";
 import {
 	countWords,
+	describesOrderedSteps,
 	detectTestRun,
 	isExplanationRequest,
 	isQuestion,
 	referencesPlanArtifact,
 } from "../heuristics/text-features";
 import {
-	categorizeCodexTool,
+	categorizeCodexToolCall,
 	extractShellCommand,
 	functionCallOutputIsError,
 	isCodexPlanTool,
@@ -109,15 +111,64 @@ function asToolOutput(line: RolloutLine): CodexToolOutput | null {
 	return null;
 }
 
-/** A non-empty, non-injected prompt is one whose text is present and does not
- * begin with `<` (Codex wraps `<environment_context>`/`<user_instructions>` as
- * user content; those are harness context, not authored prompts). */
+/**
+ * Prose openers Codex's own harness writes into a `role: "user"` message.
+ *
+ * Unlike the `<...>` wrappers these carry no structural marker whatsoever —
+ * the rollout envelope of an injected approval-review task is byte-identical
+ * in shape to a typed prompt (same `response_item` / `message` / `role: user`,
+ * same `internal_chat_message_metadata_passthrough`), so the text is the only
+ * available discriminator. Matched anchored at the start, case-sensitively,
+ * because that is how the harness emits them.
+ *
+ * KNOWN LIMITATION: these are English-locale literals and will drift when
+ * Codex rewords its harness copy. That is the same drift exposure the
+ * collector's golden fixtures exist to catch loudly — a missed prefix
+ * silently re-inflates prompt-derived signals, which is exactly the bug this
+ * list fixes, so treat a golden-test failure here as a signal to re-inventory
+ * rather than to re-baseline.
+ */
+const INJECTED_PROMPT_PREFIXES = [
+	// Codex's approval/review mode hands the model another agent's transcript
+	// to assess. Two variants: the initial assessment and the continuation.
+	"The following is the Codex agent history",
+];
+
+/**
+ * A non-empty, non-injected prompt is one whose text is present, does not
+ * begin with `<` (Codex wraps `<environment_context>`/`<user_instructions>`
+ * as user content), and does not open with one of
+ * {@link INJECTED_PROMPT_PREFIXES}.
+ *
+ * Why the prose list exists (calibration 2026-08-27): an on-disk inventory of
+ * 338 rollouts found 648 of 3941 counted prompts (16.4%) were approval-review
+ * scaffolding the `<` rule could not see — 50% of the prompts on one repo and
+ * 40% on another. Because that text is machine-authored prose full of
+ * questions and explanatory phrasing, every prompt-derived signal read it as
+ * the developer: Cognitive Engagement counted its question marks, and the
+ * uploaded `prompt_count` counted its turns. Harness text is not user
+ * behavior, so it is not evidence of any user behavior.
+ */
 function cleanPromptText(text: string): string | null {
 	const trimmed = text.trim();
-	if (trimmed.length === 0 || trimmed.startsWith("<")) {
+	if (trimmed.length === 0 || isInjectedCodexPrompt(trimmed)) {
 		return null;
 	}
 	return text;
+}
+
+/**
+ * Whether Codex's harness — not the developer — authored this `role: "user"`
+ * text. Exported so anything that reads the same rollouts applies the SAME
+ * rule: a second implementation would silently disagree with the collector
+ * about what counts as a human prompt.
+ */
+export function isInjectedCodexPrompt(text: string): boolean {
+	const trimmed = text.trim();
+	if (trimmed.startsWith("<")) {
+		return true;
+	}
+	return INJECTED_PROMPT_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
 }
 
 /** Clean user-prompt text from an `event_msg user_message` line, or null. */
@@ -207,7 +258,7 @@ function buildCodexIndex(
 		const call = asToolCall(line);
 		if (call !== null) {
 			index.toolCallLineIndexes.push(lineIndex);
-			if (categorizeCodexTool(call.name) === "execute") {
+			if (categorizeCodexToolCall(call.name, call.command) === "execute") {
 				index.executeLineIndexes.push(lineIndex);
 			}
 			return;
@@ -271,7 +322,7 @@ function deriveToolCallEvents(
 		return [];
 	}
 	const events: SessionEvent[] = [];
-	const category = categorizeCodexTool(call.name);
+	const category = categorizeCodexToolCall(call.name, call.command);
 	events.push({
 		sessionId,
 		source: SOURCE,
@@ -330,6 +381,32 @@ function deriveToolCallEvents(
  * `session_meta` line carries an id. Empty input maps to an empty stream (no
  * synthetic start/end).
  */
+/**
+ * The ordered identity of the human side of a conversation: a stable hash
+ * per authored prompt, in order.
+ *
+ * Read TRANSIENTLY like every other text feature in this module — the
+ * hashes are used only to decide which rollout FILES to keep and are never
+ * attached to an event or serialized (CLAUDE.md invariant #1).
+ *
+ * Prompt text rather than timestamps, because Codex re-stamps a replayed
+ * history with the RESUME time: the same two prompts were found on disk at
+ * 20:51:32, 20:53:33 and 20:53:36 across three recordings of one
+ * conversation, so a timestamp-based identity matches nothing (0 of 47
+ * files), while prompt content matches 34 of 47.
+ */
+export function conversationFingerprint(lines: RolloutLine[]): string[] {
+	const source = determinePromptSource(lines);
+	const prompts: string[] = [];
+	for (const line of lines) {
+		const text = userPromptText(line, source);
+		if (text !== null) {
+			prompts.push(hashPrompt(text.trim()));
+		}
+	}
+	return prompts;
+}
+
 export function mapRolloutToEvents(
 	lines: RolloutLine[],
 	fallbackSessionId: string,
@@ -373,6 +450,7 @@ export function mapRolloutToEvents(
 				wordCount: countWords(promptText),
 				isQuestion: isQuestion(promptText),
 				referencesPlanArtifact: referencesPlanArtifact(promptText),
+				describesOrderedSteps: describesOrderedSteps(promptText),
 			});
 			if (isExplanationRequest(promptText)) {
 				events.push({

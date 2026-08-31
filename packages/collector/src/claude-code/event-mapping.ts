@@ -1,8 +1,10 @@
 import type { SessionEvent } from "@cosquared/schema";
+import { hashPrompt } from "../heuristics/conversation-dedupe";
 import {
 	categorizeToolName,
 	classifyCommand,
 	countWords,
+	describesOrderedSteps,
 	detectTestRun,
 	isCommandInvocation,
 	isExplanationRequest,
@@ -254,6 +256,7 @@ function deriveUserLineEvents(
 			wordCount: countWords(text),
 			isQuestion: isQuestion(text),
 			referencesPlanArtifact: referencesPlanArtifact(text),
+			describesOrderedSteps: describesOrderedSteps(text),
 		});
 		if (isExplanationRequest(text)) {
 			events.push({
@@ -380,6 +383,32 @@ function deriveAssistantLineEvents(
 		}
 	}
 	return events;
+}
+
+/**
+ * The ordered hashes of the human prompts in one transcript — a transient
+ * identity for the conversation it recorded, used only to recognize a
+ * resume/fork that replays it (see `conversation-dedupe.ts`).
+ *
+ * Reads the SAME {@link isHumanPrompt} gate the event stream does, so a
+ * line the collector refuses to score is also invisible to conversation
+ * identity — harness text must not make two recordings look alike, nor
+ * two genuinely different ones look distinct. Hashes are compared inside
+ * the collector and discarded; none is ever emitted or uploaded
+ * (CLAUDE.md invariant #1).
+ */
+export function conversationFingerprint(lines: TranscriptLine[]): string[] {
+	const prompts: string[] = [];
+	for (const line of lines) {
+		if (line.type !== "user" || !isHumanPrompt(line)) {
+			continue;
+		}
+		const text = promptText(line).trim();
+		if (text.length > 0) {
+			prompts.push(hashPrompt(text));
+		}
+	}
+	return prompts;
 }
 
 /**

@@ -6,7 +6,8 @@ import { createInterface } from "node:readline";
 import { type SessionEvent, SessionEventSchema } from "@cosquared/schema";
 import { z } from "zod";
 import type { Collector, CollectorOptions } from "../collector";
-import { mapRolloutToEvents } from "./event-mapping";
+import { dropResumedDuplicates } from "../heuristics/conversation-dedupe";
+import { conversationFingerprint, mapRolloutToEvents } from "./event-mapping";
 import {
 	parseRolloutLine,
 	type RolloutLine,
@@ -147,8 +148,11 @@ export class CodexCollector implements Collector {
 	}: CollectorOptions): Promise<SessionEvent[]> {
 		const resolvedRepoPath = resolve(repoPath);
 		const files = await walkJsonlFiles(this.sessionsDir);
-		const sessions: Array<{ startTimestamp: string; events: SessionEvent[] }> =
-			[];
+		const sessions: Array<{
+			startTimestamp: string;
+			events: SessionEvent[];
+			fingerprint: string[];
+		}> = [];
 		for (const filePath of files) {
 			try {
 				if (since !== undefined) {
@@ -173,12 +177,20 @@ export class CodexCollector implements Collector {
 								(event) => Date.parse(event.timestamp) > since.getTime(),
 							);
 				if (events.length > 0) {
-					sessions.push({ startTimestamp, events });
+					// Fingerprint the FULL parsed rollout, not the `since`-filtered
+					// events: a resumed copy and its original must line up on
+					// their shared history for the prefix test to see the overlap.
+					sessions.push({
+						startTimestamp,
+						events,
+						fingerprint: conversationFingerprint(lines),
+					});
 				}
 			} catch {}
 		}
-		sessions.sort((a, b) => a.startTimestamp.localeCompare(b.startTimestamp));
-		const allEvents = sessions.flatMap((session) => session.events);
+		const distinct = dropResumedDuplicates(sessions);
+		distinct.sort((a, b) => a.startTimestamp.localeCompare(b.startTimestamp));
+		const allEvents = distinct.flatMap((session) => session.events);
 		// Runtime enforcement of the no-free-text invariant: every batch must
 		// pass the strict schema before it leaves the collector.
 		return z.array(SessionEventSchema).parse(allEvents);

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-	categorizeCodexTool,
+	categorizeCodexToolCall,
 	extractShellCommand,
 	functionCallOutputIsError,
 	isCodexPlanTool,
@@ -12,28 +12,75 @@ import {
  * categories, commands, and pass/fail.
  */
 
-describe("categorizeCodexTool", () => {
-	const fixtures: Record<string, { name: string; expected: string }> = {
-		execCommandIsExecute: { name: "exec_command", expected: "execute" },
-		legacyShellIsExecute: { name: "shell", expected: "execute" },
-		writeStdinIsExecute: { name: "write_stdin", expected: "execute" },
+describe("categorizeCodexToolCall", () => {
+	const fixtures: Record<
+		string,
+		{ name: string; command?: string; expected: string }
+	> = {
+		// Shell tools classify by the command they run (the calibration fix:
+		// Codex's only read/search channel is the shell).
+		execRunningBuildIsExecute: {
+			name: "exec_command",
+			command: "npm run build",
+			expected: "execute",
+		},
+		execRunningRipgrepIsSearch: {
+			name: "exec_command",
+			command: "rg -n 'foo' src/",
+			expected: "search",
+		},
+		execReadingWithSedIsFileRead: {
+			name: "exec_command",
+			command: "sed -n '1,80p' src/index.ts",
+			expected: "file_read",
+		},
+		execWithNoRecoverableCommandIsExecute: {
+			name: "exec_command",
+			expected: "execute",
+		},
+		legacyShellClassifiesByCommand: {
+			name: "shell",
+			command: "bash -lc 'git status'",
+			expected: "file_read",
+		},
+		writeStdinIsExecute: {
+			name: "write_stdin",
+			command: "y",
+			expected: "execute",
+		},
 		applyPatchIsFileEdit: { name: "apply_patch", expected: "file_edit" },
 		readFileIsFileRead: { name: "read_file", expected: "file_read" },
+		viewImageIsFileRead: { name: "view_image", expected: "file_read" },
 		webSearchIsSearch: { name: "web_search", expected: "search" },
 		// update_plan is a plan artifact, categorized other (handled separately).
 		updatePlanIsOther: { name: "update_plan", expected: "other" },
-		unknownMcpToolIsOther: {
-			name: "mcp__figma_console__figma_get_status",
-			expected: "other",
+		// MCP + hosted connector tools are external-service delegation —
+		// the workflow-leverage signal (PRD §7.3 five-layer stack).
+		mcpToolIsDelegate: {
+			name: "mcp__figma_console__figma_get_component_image",
+			expected: "delegate",
 		},
+		connectorToolIsDelegate: { name: "_search_emails", expected: "delegate" },
+		spawnAgentIsDelegate: { name: "spawn_agent", expected: "delegate" },
+		// MCP plumbing is not a delegation act.
+		mcpPlumbingIsOther: { name: "list_mcp_resources", expected: "other" },
+		waitAgentIsOther: { name: "wait_agent", expected: "other" },
+		unknownToolIsOther: { name: "request_user_input", expected: "other" },
 	};
 
-	test.each(Object.entries(fixtures))("%s", (_name, { name, expected }) => {
-		expect(categorizeCodexTool(name)).toBe(expected);
+	test.each(Object.entries(fixtures))("%s", (_name, {
+		name,
+		command,
+		expected,
+	}) => {
+		expect(categorizeCodexToolCall(name, command ?? null)).toBe(expected);
 	});
 });
 
 describe("isCodexPlanTool", () => {
+	// Removal was TESTED and rejected: the 2026-08-25 calibration showed
+	// agreement with a human read got worse without this mapping (a human
+	// credits step-list-driven sessions as framed regardless of initiator).
 	test("update_plan is the plan tool", () => {
 		expect(isCodexPlanTool("update_plan")).toBe(true);
 	});

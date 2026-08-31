@@ -15,6 +15,7 @@ function promptEvent(
 		wordCount: 5,
 		isQuestion: false,
 		referencesPlanArtifact: false,
+		describesOrderedSteps: false,
 	};
 }
 

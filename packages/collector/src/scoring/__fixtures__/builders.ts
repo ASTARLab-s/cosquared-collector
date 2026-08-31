@@ -56,6 +56,7 @@ export function prompt(
 		wordCount: 8,
 		isQuestion: false,
 		referencesPlanArtifact: false,
+		describesOrderedSteps: false,
 		...overrides,
 	};
 }

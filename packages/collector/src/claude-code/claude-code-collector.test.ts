@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SessionEvent } from "@cosquared/schema";
 import { describe, expect, test } from "vitest";
@@ -156,5 +158,82 @@ describe("ClaudeCodeCollector", () => {
 		for (const raw of plantedRawStrings) {
 			expect(serialized).not.toContain(raw);
 		}
+	});
+});
+
+describe("ClaudeCodeCollector conversation dedupe", () => {
+	/**
+	 * Claude Code APPENDS to one file on resume, so it duplicates far less
+	 * than Codex — but it does FORK: interrupting a turn and branching
+	 * writes a second transcript that replays the shared opening. Measured
+	 * on the operator's store (calibration 2026-08-31): one overlapping
+	 * pair, 6 replayed prompts, 2.3% of the local corpus.
+	 */
+	const REPO = "/tmp/fork-repo";
+
+	function store(files: Record<string, string[]>): string {
+		const dir = mkdtempSync(join(tmpdir(), "claude-fork-"));
+		const projectDir = join(dir, "-tmp-fork-repo");
+		mkdirSync(projectDir, { recursive: true });
+		let sessionOrdinal = 0;
+		for (const [name, prompts] of Object.entries(files)) {
+			sessionOrdinal += 1;
+			const sessionId = `00000000-0000-4000-8000-00000000010${sessionOrdinal}`;
+			const lines = prompts.map((text, index) => ({
+				type: "user",
+				sessionId,
+				timestamp: `2026-06-12T10:${String(index).padStart(2, "0")}:00.000Z`,
+				message: { content: text },
+			}));
+			writeFileSync(
+				join(projectDir, `${name}.jsonl`),
+				`${lines.map((line) => JSON.stringify(line)).join("\n")}\n`,
+			);
+		}
+		return dir;
+	}
+
+	async function promptCount(files: Record<string, string[]>) {
+		const events = await new ClaudeCodeCollector({
+			projectsDir: store(files),
+		}).collect({ repoPath: REPO });
+		const prompts = events.filter((event) => event.type === "user_prompt");
+		return {
+			prompts: prompts.length,
+			sessions: new Set(prompts.map((event) => event.sessionId)).size,
+		};
+	}
+
+	test("counts a forked conversation's shared opening only once", async () => {
+		const shared = ["plan the migration", "now add the index", "run the tests"];
+		expect(
+			await promptCount({
+				original: [...shared, "ship it"],
+				fork: [...shared, "retry"],
+			}),
+		).toEqual({ prompts: 4, sessions: 1 });
+	});
+
+	test("keeps both branches when a fork became real work of its own", async () => {
+		const shared = ["plan the migration", "now add the index"];
+		expect(
+			await promptCount({
+				original: [...shared, "ship it", "tag the release"],
+				branch: [...shared, "actually revert that", "try postgres instead"],
+			}),
+		).toEqual({ prompts: 8, sessions: 2 });
+	});
+
+	test("harness-authored lines never become prompts", async () => {
+		expect(
+			await promptCount({
+				only: [
+					"fix the flaky test",
+					"[Request interrupted by user]",
+					"[Request interrupted by user for tool use]",
+					"try again with a longer timeout",
+				],
+			}),
+		).toEqual({ prompts: 2, sessions: 1 });
 	});
 });

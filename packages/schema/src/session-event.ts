@@ -72,6 +72,12 @@ export const UserPromptEventSchema = z.strictObject({
 	wordCount: z.number().int().nonnegative(),
 	isQuestion: z.boolean(),
 	referencesPlanArtifact: z.boolean(),
+	/**
+	 * The prompt lays out the work as explicit ordered steps (a numbered
+	 * list, or "first … then"). Structuring work in the prompt is planning
+	 * even when no plan file exists — feeds Task Framing (PRD §7.3).
+	 */
+	describesOrderedSteps: z.boolean(),
 });
 
 /**

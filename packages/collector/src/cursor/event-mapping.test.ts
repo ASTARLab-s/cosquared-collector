@@ -90,6 +90,7 @@ describe("mapCursorConversationToEvents", () => {
 				wordCount: 7,
 				isQuestion: true,
 				referencesPlanArtifact: true,
+				describesOrderedSteps: false,
 			}),
 			event({ type: "explanation_request" }),
 			event({

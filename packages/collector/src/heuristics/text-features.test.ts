@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
+	classifyShellCommand,
 	countWords,
+	describesOrderedSteps,
 	detectTestRun,
 	isExplanationRequest,
 	isPlanArtifactWrite,
@@ -63,6 +65,45 @@ describe("referencesPlanArtifact", () => {
 
 	test.each(Object.entries(fixtures))("%s", (_name, { text, expected }) => {
 		expect(referencesPlanArtifact(text)).toBe(expected);
+	});
+});
+
+describe("describesOrderedSteps", () => {
+	const fixtures: Record<string, { text: string; expected: boolean }> = {
+		firstThen: {
+			text: "First, explain how scheduled tasks work. Then interview me about what I need.",
+			expected: true,
+		},
+		numberedList: {
+			text: "1. add the migration\n2. wire the route\n3. write the test",
+			expected: true,
+		},
+		stepPrefixedList: {
+			text: "Step 1 read the spec\nStep 2 implement it",
+			expected: true,
+		},
+		nextFinally: {
+			text: "next pull the schema, finally regenerate the types",
+			expected: true,
+		},
+		// One incidental cue is not a plan — this is the guard that keeps the
+		// rule from becoming the rejected "long prompt = framed" heuristic.
+		singleIncidentalMarker: {
+			text: "the first test is broken, please fix it",
+			expected: false,
+		},
+		repeatedSameMarker: {
+			text: "first fix the first bug in the first file",
+			expected: false,
+		},
+		singleNumberedItem: { text: "1. just do the thing", expected: false },
+		unstructuredRamble: {
+			text: "so I was thinking we could maybe refactor the whole auth layer because it has grown messy over time and nobody really understands it any more",
+			expected: false,
+		},
+	};
+	test.each(Object.entries(fixtures))("%s", (_name, { text, expected }) => {
+		expect(describesOrderedSteps(text)).toBe(expected);
 	});
 });
 
@@ -172,5 +213,76 @@ describe("isRejectionResult", () => {
 
 	test.each(Object.entries(fixtures))("%s", (_name, { text, expected }) => {
 		expect(isRejectionResult(text)).toBe(expected);
+	});
+});
+
+describe("classifyShellCommand", () => {
+	// Command shapes drawn from a real-rollout inventory (2026-08-25
+	// calibration): the top Codex exec commands were `sed -n`, `rg -n`, and
+	// `nl -ba` — reads and searches, not executions.
+	const fixtures: Record<string, { command: string; expected: string }> = {
+		ripgrepIsSearch: {
+			command: "rg -n 'scoreProfile' src/",
+			expected: "search",
+		},
+		grepIsSearch: { command: "grep -r TODO .", expected: "search" },
+		fdIsSearch: { command: "fd '.ts$' packages", expected: "search" },
+		gitGrepIsSearch: {
+			command: "git grep -n weightedMean",
+			expected: "search",
+		},
+		catIsRead: { command: "cat package.json", expected: "file_read" },
+		sedPrintRangeIsRead: {
+			command: "sed -n '1,80p' src/index.ts",
+			expected: "file_read",
+		},
+		sedInPlaceIsExecute: {
+			command: "sed -i '' 's/foo/bar/' src/index.ts",
+			expected: "execute",
+		},
+		nlIsRead: { command: "nl -ba src/app.ts", expected: "file_read" },
+		gitDiffIsRead: { command: "git diff --stat", expected: "file_read" },
+		gitStatusIsRead: { command: "git status", expected: "file_read" },
+		gitCommitIsExecute: {
+			command: "git commit -m 'fix'",
+			expected: "execute",
+		},
+		buildIsExecute: { command: "npm run build", expected: "execute" },
+		testRunnerIsExecute: { command: "pytest -q tests/", expected: "execute" },
+		unknownProgramIsExecute: { command: "netlify deploy", expected: "execute" },
+		searchPipedToReadIsSearch: {
+			command: "rg -l 'foo' | head -5",
+			expected: "search",
+		},
+		readChainStaysRead: {
+			command: "pwd && ls -la && wc -l src/index.ts",
+			expected: "file_read",
+		},
+		executeInChainDominates: {
+			command: "cat notes.md && npm test",
+			expected: "execute",
+		},
+		envPrefixIsSkipped: {
+			command: "PATH=/usr/local/bin:$PATH rg -n 'foo'",
+			expected: "search",
+		},
+		absolutePathIsStripped: {
+			command: "/usr/bin/grep -c foo file.txt",
+			expected: "search",
+		},
+		bashDashLcClassifiesNestedCommand: {
+			command: 'bash -lc "sed -n 1,50p src/app.ts"',
+			expected: "file_read",
+		},
+		bareShellIsExecute: { command: "bash ./setup.sh", expected: "execute" },
+		xargsDefersToWrappedProgram: {
+			command: "rg -l foo | xargs cat",
+			expected: "search",
+		},
+		emptyCommandFallsBackToExecute: { command: "   ", expected: "execute" },
+	};
+
+	test.each(Object.entries(fixtures))("%s", (_name, { command, expected }) => {
+		expect(classifyShellCommand(command)).toBe(expected);
 	});
 });

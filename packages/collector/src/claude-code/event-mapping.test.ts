@@ -127,6 +127,7 @@ describe("mapTranscriptToEvents", () => {
 				wordCount: 10,
 				isQuestion: true,
 				referencesPlanArtifact: true,
+				describesOrderedSteps: false,
 			},
 		]);
 		// Privacy guard: no fragment of the prompt survives serialization.

@@ -1,11 +1,12 @@
 import type { SessionEvent } from "@cosquared/schema";
+import { classifyShellCommand } from "../heuristics/text-features";
 
 /**
  * Codex-CLI-specific feature extraction: the tool→category map and the
  * argument/output reducers. The tool-agnostic TEXT rules (test-runner
- * detection, prompt classification) are shared via `../heuristics/text-features`
- * so the published methodology is identical across tools; only the
- * Codex-line-shaped pieces live here.
+ * detection, prompt classification, shell-command classification) are shared
+ * via `../heuristics/text-features` so the published methodology is identical
+ * across tools; only the Codex-line-shaped pieces live here.
  *
  * PRIVACY CONTRACT: these functions read tool arguments and outputs (raw shell
  * commands, patch bodies, exec stdout) TRANSIENTLY and return only enums and
@@ -14,33 +15,68 @@ import type { SessionEvent } from "@cosquared/schema";
  * Tool names verified against real rollouts (cli_version 0.108 → 0.142):
  * `exec_command` is the shell tool (older versions used `shell`/`local_shell`);
  * `apply_patch` arrives as a `custom_tool_call`; `update_plan` is Codex's
- * planning mechanism.
+ * planning mechanism; MCP tools arrive as `mcp__<server>__<tool>`; hosted
+ * connector tools arrive underscore-prefixed (`_search_emails`,
+ * `_create_product`); `spawn_agent`/`wait_agent` manage subagents.
  */
 
 type ToolCategory = Extract<SessionEvent, { type: "tool_call" }>["category"];
 
+/** Shell-mediated tools whose category comes from the COMMAND they run. */
+const CODEX_SHELL_TOOLS = new Set([
+	"exec_command",
+	"shell",
+	"local_shell",
+	"local_shell_call",
+]);
+
 /**
- * Codex tool name → normalized category. `exec_command` (and the legacy
- * `shell`/`local_shell`) run commands; `write_stdin` feeds an interactive
- * shell session; `apply_patch` edits files; `read_file` reads them;
- * `web_search` searches. `update_plan` stays `other` here and is handled
- * specially as a planning artifact (see {@link isCodexPlanTool}). Every
- * unknown name (MCP tools, future tools) falls to `other` — never an error
- * (PRD §14 Risk #4 forward compatibility).
+ * Codex tool name → normalized category, for names whose category is fixed.
+ * `write_stdin` feeds an interactive shell session (execution); `apply_patch`
+ * edits files; `read_file`/`view_image` read them; `web_search` searches;
+ * `spawn_agent` delegates to a subagent. `update_plan` stays `other` here and
+ * is handled specially as a planning artifact (see {@link isCodexPlanTool}).
  */
 const CODEX_TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
-	exec_command: "execute",
-	shell: "execute",
-	local_shell: "execute",
-	local_shell_call: "execute",
 	write_stdin: "execute",
 	apply_patch: "file_edit",
 	read_file: "file_read",
+	view_image: "file_read",
 	web_search: "search",
+	spawn_agent: "delegate",
 };
 
-/** See {@link CODEX_TOOL_CATEGORY_BY_NAME}. */
-export function categorizeCodexTool(name: string): ToolCategory {
+/**
+ * Codex tool call → normalized category.
+ *
+ * Shell tools ({@link CODEX_SHELL_TOOLS}) are classified by the command they
+ * run via the shared {@link classifyShellCommand} — Codex's ONLY channel for
+ * reading and searching files is the shell, so a blanket "execute" label made
+ * balanced sessions structurally undetectable and collapsed Tool & Workflow
+ * Judgment on Codex-heavy repos (2026-08-25 calibration: ~70% of real exec
+ * commands were `sed -n`/`rg`/`nl` reads and searches). A shell call with no
+ * recoverable command stays `execute` (the historical label).
+ *
+ * MCP tools (`mcp__<server>__<tool>`) and hosted connector tools (the
+ * underscore-prefixed `_search_emails`-style names, verified against real
+ * rollouts) are `delegate` — external-service delegation is the workflow
+ * leverage the five-layer stack describes (PRD §7.3), same as Claude Code's
+ * Skill/Task/Agent. MCP *plumbing* (`list_mcp_resources`…) is not a
+ * delegation act and falls through to `other`.
+ *
+ * Every remaining unknown name falls to `other` — never an error (PRD §14
+ * Risk #4 forward compatibility).
+ */
+export function categorizeCodexToolCall(
+	name: string,
+	command: string | null,
+): ToolCategory {
+	if (CODEX_SHELL_TOOLS.has(name)) {
+		return command === null ? "execute" : classifyShellCommand(command);
+	}
+	if (name.startsWith("mcp__") || name.startsWith("_")) {
+		return "delegate";
+	}
 	return CODEX_TOOL_CATEGORY_BY_NAME[name] ?? "other";
 }
 
@@ -48,6 +84,12 @@ export function categorizeCodexTool(name: string): ToolCategory {
  * `update_plan` is Codex's planning mechanism (a structured step list) — the
  * strongest Task Framing signal Codex emits, mapped to a `plan_artifact_created`
  * (`plan_doc`) event, analogous to Claude Code's ExitPlanMode (PRD §7.3).
+ *
+ * Kept deliberately even though the step list is often assistant-initiated:
+ * the 2026-08-25 calibration study tested removing it and agreement got
+ * WORSE — a human read credits sessions that work through an explicit step
+ * list as framed regardless of who typed it first, so the artifact, not the
+ * initiator, is the honest signal.
  */
 export function isCodexPlanTool(name: string): boolean {
 	return name === "update_plan";

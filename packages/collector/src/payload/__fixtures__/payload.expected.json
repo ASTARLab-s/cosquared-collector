@@ -1,5 +1,5 @@
 {
-	"schema_version": "1.5.0",
+	"schema_version": "1.6.0",
 	"client": {
 		"cli_version": "0.1.0",
 		"platform": "test-os"
@@ -38,12 +38,12 @@
 		}
 	],
 	"local_scores": {
-		"ai_collaboration": 53,
+		"ai_collaboration": 55,
 		"ai_collaboration_subsignals": {
 			"task_framing": 0,
 			"tool_workflow_judgment": 81.25,
 			"verification_calibration": 80,
-			"cognitive_engagement": 25
+			"cognitive_engagement": 33.33333333333333
 		},
 		"testing": 93,
 		"shipping": 63
@@ -143,8 +143,8 @@
 			"cognitive_engagement": [
 				{
 					"kind": "engagement_depth",
-					"numerator": 1,
-					"denominator": 4,
+					"numerator": 2,
+					"denominator": 6,
 					"refs": [
 						{
 							"source": "claude-code",

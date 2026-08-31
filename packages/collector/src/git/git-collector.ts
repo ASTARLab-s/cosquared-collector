@@ -1,6 +1,10 @@
-import { execFile as execFileCallback, spawn } from "node:child_process";
+import {
+	type ChildProcess,
+	execFile as execFileCallback,
+	spawn,
+} from "node:child_process";
 import { resolve } from "node:path";
-import { createInterface } from "node:readline";
+import { createInterface, type Interface } from "node:readline";
 import { promisify } from "node:util";
 import { type SessionEvent, SessionEventSchema } from "@cosquared/schema";
 import { z } from "zod";
@@ -19,6 +23,23 @@ import {
 import { type ReducedCommit, reduceLogLines } from "./log-reduction";
 
 const execFile = promisify(execFileCallback);
+
+/**
+ * Wall-clock cap on a single non-streaming git invocation (`rev-parse`,
+ * `config`, `ls-files`, `log -1`). iCloud Drive can block `git` forever
+ * while materializing offloaded files (2026-08-25: `git log --numstat`
+ * hung on a Documents/ repo during calibration). Degrade to no events
+ * rather than stall `cosq analyze` / `sync`.
+ */
+export const GIT_COMMAND_TIMEOUT_MS = 30_000;
+
+/**
+ * Silence cap on a streaming `git log --numstat`. If no stdout arrives
+ * for this long the process is treated as hung (iCloud / git-lfs) and
+ * killed. A log that is still emitting lines on a large repo keeps
+ * running — this is a stall timeout, not a total-duration cap.
+ */
+export const GIT_STALL_TIMEOUT_MS = 30_000;
 
 /**
  * Reads a repo's git metadata and converts it into the normalized
@@ -43,15 +64,30 @@ const execFile = promisify(execFileCallback);
 export class GitCollector implements Collector {
 	readonly source = "git" as const;
 	private readonly gitBinary: string;
+	private readonly commandTimeoutMs: number;
+	private readonly stallTimeoutMs: number;
 
-	constructor({ gitBinary }: { gitBinary?: string } = {}) {
+	constructor({
+		gitBinary,
+		commandTimeoutMs = GIT_COMMAND_TIMEOUT_MS,
+		stallTimeoutMs = GIT_STALL_TIMEOUT_MS,
+	}: {
+		gitBinary?: string;
+		commandTimeoutMs?: number;
+		stallTimeoutMs?: number;
+	} = {}) {
 		this.gitBinary = gitBinary ?? "git";
+		this.commandTimeoutMs = commandTimeoutMs;
+		this.stallTimeoutMs = stallTimeoutMs;
 	}
 
 	/** True iff the git binary runs. Never throws. */
 	async detect(): Promise<boolean> {
 		try {
-			await execFile(this.gitBinary, ["--version"]);
+			await execFile(this.gitBinary, ["--version"], {
+				timeout: this.commandTimeoutMs,
+				killSignal: "SIGKILL",
+			});
 			return true;
 		} catch {
 			return false;
@@ -119,7 +155,10 @@ export class GitCollector implements Collector {
 
 	private async git(repo: string, args: string[]): Promise<string | null> {
 		try {
-			const { stdout } = await execFile(this.gitBinary, ["-C", repo, ...args]);
+			const { stdout } = await execFile(this.gitBinary, ["-C", repo, ...args], {
+				timeout: this.commandTimeoutMs,
+				killSignal: "SIGKILL",
+			});
 			return stdout;
 		} catch {
 			return null;
@@ -181,39 +220,17 @@ export class GitCollector implements Collector {
 		repo: string,
 		since: Date | undefined,
 	): Promise<ReducedCommit[]> {
-		return new Promise((resolveCommits) => {
-			// stdio ["ignore","pipe","ignore"]: we consume ONLY stdout. Leaving
-			// stdin/stderr as inheritable pipes lets a child git spawns (e.g.
-			// `git-lfs filter-process` in an LFS repo) inherit and hold them open,
-			// which can stall the read; and an unread stderr pipe deadlocks if git
-			// ever writes >64KB to it. Ignoring both removes those hazards.
-			const child = spawn(
-				this.gitBinary,
-				[
-					"-C",
-					repo,
-					"log",
-					"--no-merges",
-					"--numstat",
-					"--format=%x1e%cI%x1f%ae%x1f%an",
-					...(since ? [`--since=${since.toISOString()}`] : []),
-				],
-				{ stdio: ["ignore", "pipe", "ignore"] },
-			);
-			const reduced = reduceLogLines(
-				createInterface({
-					input: child.stdout,
-					crlfDelay: Number.POSITIVE_INFINITY,
-				}),
-			).catch((): ReducedCommit[] => []);
-			child.once("error", () => resolveCommits([]));
-			// `close` fires after stdout has ended, so `reduced` has seen every
-			// line by then. Non-zero exit (e.g. 128 on a repo with no commits)
-			// means "no history to report", not an error — degrade to zero.
-			child.once("close", (code) => {
-				resolveCommits(code === 0 ? reduced : []);
-			});
-		});
+		return this.streamGitLog(
+			repo,
+			[
+				"--no-merges",
+				"--numstat",
+				"--format=%x1e%cI%x1f%ae%x1f%an",
+				...(since ? [`--since=${since.toISOString()}`] : []),
+			],
+			(lines) => reduceLogLines(lines),
+			[],
+		);
 	}
 
 	/** HEAD committer date, UTC-normalized — null when the repo has no HEAD. */
@@ -281,33 +298,77 @@ export class GitCollector implements Collector {
 			referenceTime: string;
 		},
 	): Promise<ChurnTotals | null> {
-		return new Promise((resolveTotals) => {
-			// See streamCommitLog: consume only stdout; ignore stdin/stderr so an
-			// inherited pipe (e.g. git-lfs) or a large stderr write can't stall us.
-			const child = spawn(
-				this.gitBinary,
-				[
-					"-C",
-					repo,
-					"log",
-					"--no-merges",
-					"--numstat",
-					"--format=%x1e%cI%x1f%ae%x1f%an",
-					`--since=${scanSinceIso}`,
-				],
-				{ stdio: ["ignore", "pipe", "ignore"] },
-			);
-			const reduced = reduceChurnLines(
+		return this.streamGitLog(
+			repo,
+			[
+				"--no-merges",
+				"--numstat",
+				"--format=%x1e%cI%x1f%ae%x1f%an",
+				`--since=${scanSinceIso}`,
+			],
+			(lines) => reduceChurnLines(lines, options),
+			null,
+		);
+	}
+
+	/**
+	 * Spawn `git log …`, reduce stdout line-by-line, kill the child if it
+	 * goes silent for {@link GIT_STALL_TIMEOUT_MS}. stdio is
+	 * `["ignore","pipe","ignore"]`: we consume ONLY stdout. Leaving
+	 * stdin/stderr as inheritable pipes lets a child git spawns (e.g.
+	 * `git-lfs filter-process` in an LFS repo) inherit and hold them open,
+	 * which can stall the read; and an unread stderr pipe deadlocks if git
+	 * ever writes >64KB to it.
+	 */
+	private streamGitLog<T>(
+		repo: string,
+		logArgs: string[],
+		reduce: (lines: Interface) => Promise<T>,
+		fallback: T,
+	): Promise<T> {
+		return new Promise((resolveResult) => {
+			const child = spawn(this.gitBinary, ["-C", repo, "log", ...logArgs], {
+				stdio: ["ignore", "pipe", "ignore"],
+			});
+			if (child.stdout === null) {
+				killHungGit(child);
+				resolveResult(fallback);
+				return;
+			}
+			const stall = setTimeout(() => killHungGit(child), this.stallTimeoutMs);
+			child.stdout.on("data", () => {
+				stall.refresh();
+			});
+			const reduced = reduce(
 				createInterface({
 					input: child.stdout,
 					crlfDelay: Number.POSITIVE_INFINITY,
 				}),
-				options,
-			).catch((): ChurnTotals | null => null);
-			child.once("error", () => resolveTotals(null));
+			).catch((): T => fallback);
+
+			let settled = false;
+			const finish = (value: T | Promise<T>) => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				clearTimeout(stall);
+				resolveResult(value);
+			};
+			child.once("error", () => finish(fallback));
+			// `close` fires after stdout has ended, so `reduced` has seen every
+			// line by then. Non-zero exit (e.g. 128 on a repo with no commits,
+			// or SIGKILL after a stall) means "no history to report" — degrade.
 			child.once("close", (code) => {
-				resolveTotals(code === 0 ? reduced : null);
+				finish(code === 0 ? reduced : fallback);
 			});
 		});
 	}
+}
+
+function killHungGit(child: ChildProcess): void {
+	if (!child.killed) {
+		child.kill("SIGKILL");
+	}
+	child.stdout?.destroy();
 }

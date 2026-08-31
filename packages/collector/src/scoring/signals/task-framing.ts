@@ -5,7 +5,6 @@ import type { SessionView } from "../sessions";
 import type { ScoredSignal } from "../types";
 import {
 	confidenceForDenominator,
-	FRAMED_PROMPT_MIN_WORD_COUNT,
 	TASK_FRAMING_FULL_AT_RATE,
 } from "../weights";
 
@@ -23,8 +22,22 @@ import {
  *    working from or producing an explicit plan, even when the typed
  *    prompt is a terse "continue";
  *  - a `plan_artifact_created` precedes its first file edit;
- *  - its first prompt references a plan artifact;
- *  - its first prompt is ≥ 40 words (context and intent up front).
+ *  - its first prompt references a plan artifact, or lays the work out as
+ *    explicit ordered steps (a numbered list, or "first … then").
+ *
+ * Prompt LENGTH deliberately does not frame. Full credit for ≥40-word
+ * first prompts saturated prompt-heavy repos (model 100 vs. a human read
+ * of 30); a 2026-08-25 follow-up that gave length half credit re-saturated
+ * two of six calibration repos and overshot others. Length is not
+ * structure.
+ *
+ * ORDERING, however, is structure. Recognizing only explicit plan
+ * ARTIFACTS proved too narrow: on the 2026-08-28 calibration run it pinned
+ * three of seven repos at exactly 0 while a qualitative read of the same
+ * sessions saw 40-68, because a prompt like "First, explain how scheduled
+ * tasks work. Then interview me…" plans the work without naming a plan
+ * file. `describesOrderedSteps` requires two distinct sequencing cues or a
+ * numbered list, so an incidental "first" is still not framing.
  *
  * `context` commands (e.g. `/prime`) deliberately do NOT frame here — they
  * are context engineering and feed Tool & Workflow Judgment instead, so
@@ -35,7 +48,7 @@ import {
  * happen?" threshold.
  *
  * Signals read: `command_invoked` (category), `plan_artifact_created`,
- * `tool_call` (file_edit), `user_prompt` (referencesPlanArtifact, wordCount).
+ * `tool_call` (file_edit), `user_prompt` (referencesPlanArtifact).
  * Grounding: PRD §7.3 Task Framing row — UChicago planning study
  * (experienced devs plan before generating); the 2026 consensus workflow
  * is spec → plan → implement → verify.
@@ -75,8 +88,7 @@ export function taskFraming(sessions: SessionView[]): ScoredSignal {
 		} else if (
 			firstPrompt !== undefined &&
 			firstPrompt.type === "user_prompt" &&
-			(firstPrompt.referencesPlanArtifact ||
-				firstPrompt.wordCount >= FRAMED_PROMPT_MIN_WORD_COUNT)
+			(firstPrompt.referencesPlanArtifact || firstPrompt.describesOrderedSteps)
 		) {
 			qualifyingEvents.push(firstPrompt);
 		}

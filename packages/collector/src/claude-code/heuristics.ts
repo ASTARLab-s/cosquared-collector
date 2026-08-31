@@ -27,6 +27,7 @@ import {
 
 export {
 	countWords,
+	describesOrderedSteps,
 	detectTestRun,
 	isExplanationRequest,
 	isPlanArtifactWrite,
@@ -54,12 +55,60 @@ function isCommandMachinery(text: string): boolean {
 }
 
 /**
+ * Openers of `role: "user"` lines Claude Code's harness writes itself. The
+ * envelope is byte-identical in shape to a typed prompt — same `type:
+ * "user"`, same `message.content`, and `isMeta` is NOT set — so the text is
+ * the only available discriminator, exactly as for Codex's injected prompts.
+ */
+const HARNESS_AUTHORED_PREFIXES = [
+	// Written when the user interrupts a turn (also "…for tool use").
+	"[Request interrupted by user",
+	// Auto-compaction preamble, followed by a machine-written summary of the
+	// earlier conversation.
+	"This session is being continued from a previous conversation",
+];
+
+/**
+ * Whether Claude Code's harness — not the developer — authored this
+ * `role: "user"` text.
+ *
+ * Exported so anything that reads the same transcripts applies the SAME
+ * rule: a second implementation would silently disagree with the collector
+ * about what counts as a human prompt (the lesson of calibration
+ * 2026-08-28, where the LLM judge and the collector had drifted on exactly
+ * that question for Codex).
+ *
+ * Grounded in an on-disk inventory (2026-08-31, 28 transcripts / 268
+ * counted prompts): 11 prompts (4.1%) were harness text, concentrated at
+ * 6% on one repo. Both shapes corrupt signals rather than merely padding
+ * counts:
+ *
+ * - `[Request interrupted by user]` carries no authored words at all, yet
+ *   occupied a `user_prompt` slot in Cognitive Engagement's denominator.
+ * - The compaction preamble is long machine-written prose containing a
+ *   NUMBERED SUMMARY, so `describesOrderedSteps` read it as the developer
+ *   laying out ordered steps and credited the session as *framed* — a
+ *   false Task Framing positive, and the same class of defect as the
+ *   injected Codex prompts (see `isInjectedCodexPrompt`).
+ *
+ * Harness text is not user behavior, so it is not evidence of any user
+ * behavior.
+ */
+export function isHarnessAuthoredPrompt(text: string): boolean {
+	const trimmed = text.trim();
+	return HARNESS_AUTHORED_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
+}
+
+/**
  * Whether a user line is a prompt the human actually typed.
  *
  * Rule: content is a string (or an array containing a `text` block and no
  * `tool_result` block), the line is not harness-injected (`isMeta`), not
- * subagent traffic (`isSidechain`), and the text is not slash-command
- * machinery (`<command-...>` / `<local-command-...>` markers).
+ * subagent traffic (`isSidechain`), the text is not slash-command
+ * machinery (`<command-...>` / `<local-command-...>` markers), and the
+ * text was not authored by the harness itself
+ * ({@link isHarnessAuthoredPrompt}) — interrupt markers and compaction
+ * preambles set no `isMeta` flag, so only the text distinguishes them.
  *
  * Gates the `user_prompt` event, which feeds the Task Framing and
  * Cognitive Engagement sub-signals (PRD §7.3, AI Collaboration).
@@ -70,7 +119,7 @@ export function isHumanPrompt(line: UserLine): boolean {
 	}
 	const content = line.message.content;
 	if (typeof content === "string") {
-		return !isCommandMachinery(content);
+		return !isCommandMachinery(content) && !isHarnessAuthoredPrompt(content);
 	}
 	const containsToolResult = content.some(
 		(block) => block.type === "tool_result",
@@ -79,7 +128,11 @@ export function isHumanPrompt(line: UserLine): boolean {
 		return false;
 	}
 	const text = promptText(line);
-	return text.length > 0 && !isCommandMachinery(text);
+	return (
+		text.length > 0 &&
+		!isCommandMachinery(text) &&
+		!isHarnessAuthoredPrompt(text)
+	);
 }
 
 /**

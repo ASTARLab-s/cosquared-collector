@@ -30,7 +30,7 @@ normalized event stream that has **no free-text fields**. Each event is a set of
 structural facts — counts, booleans, categories, durations — computed at parse
 time:
 
-- *"a prompt was sent; it was 42 words; it referenced a plan; it was a question"*
+- *"a prompt was sent; it was 42 words; it referenced a plan; it laid out ordered steps; it was a question"*
 - *"a change was accepted; a test run followed it"*
 - *"a commit touched 3 files, +120/−15 lines, and touched a test file"*
 

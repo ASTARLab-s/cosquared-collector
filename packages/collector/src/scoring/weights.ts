@@ -37,15 +37,15 @@ export const AI_COLLABORATION_WEIGHTS: Record<
  * scores 100. Grounding: UChicago planning study (experienced devs plan
  * before generating); the 2026 consensus workflow is spec → plan →
  * implement → verify (PRD §7.3).
+ *
+ * Framing requires explicit plan STRUCTURE (a plan command, a plan
+ * artifact, or a prompt referencing one). Prompt length is not a
+ * substitute: full credit for ≥40-word first prompts saturated
+ * prompt-heavy repos (model 100 vs. a human read of 30); half credit
+ * (2026-08-25 follow-up) re-saturated two of six calibration repos and
+ * overshot others. Length is not structure.
  */
 export const TASK_FRAMING_FULL_AT_RATE = 0.8;
-
-/**
- * A first prompt of ≥ this many words counts as framing the task even
- * without a plan artifact — a coarse published proxy for supplying context
- * and intent up front (PRD §7.3 prompt specificity).
- */
-export const FRAMED_PROMPT_MIN_WORD_COUNT = 40;
 
 /**
  * Tool & Workflow Judgment component weights (sum to 1): session structure
@@ -87,16 +87,24 @@ export const VC_TEST_AFTER_ACCEPT_WEIGHT = 0.4;
 export const VC_FULL_AT_RATE = 0.75;
 
 /**
- * Cognitive Engagement: engagement acts (questions + explanation requests)
- * per session at which a session is considered fully engaged. The score is
- * the mean of per-session min(acts, this) / this — so depth counts (a
- * session with one question scores half, two or more scores full) and a
- * single chatty session can't max the whole signal. Deliberately NOT a
- * binary presence rate, which saturated at 100. Grounding: Anthropic
- * skill-formation study (engaged interaction patterns preserved skill
- * while passive use lowered comprehension 17%, PRD §7.3).
+ * Cognitive Engagement point weights. Engagement acts are WEIGHTED, not
+ * equal: an explanation request earns 2 points — it is the direct
+ * comprehension-seeking behavior the Anthropic skill-formation study found
+ * preserved skill (passive use lowered comprehension 17%, PRD §7.3) —
+ * while a question-mark prompt earns 1, because `?` is a coarse proxy that
+ * also fires on logistics ("ship it?") and on answers to the assistant's
+ * own interview questions. A session is fully engaged at 4 points (the
+ * equivalent of two explanation-grade acts); the score is the mean of
+ * per-session min(points, 4) / 4.
+ *
+ * The earlier rule (2 unweighted acts = full) saturated: the 2026-08-25
+ * calibration study showed sessions maxing the signal at 100 on
+ * question-mark counts alone where a human read of the same transcripts
+ * scored 40–45 ("passive — accepting plans without pushback").
  */
-export const CE_SESSION_FULL_COUNT = 2;
+export const CE_SESSION_FULL_POINTS = 4;
+export const CE_EXPLANATION_POINTS = 2;
+export const CE_QUESTION_POINTS = 1;
 
 /**
  * Testing Discipline component weights (sum to 1): in-session test runs

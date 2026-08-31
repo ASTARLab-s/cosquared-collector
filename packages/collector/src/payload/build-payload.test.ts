@@ -112,12 +112,13 @@ describe("buildAnalysisPayload", () => {
 	test("local scores match the verified Builder Profile", () => {
 		const { local_scores } = buildAnalysisPayload(goldenEvents, META);
 		expect(local_scores).toEqual({
-			ai_collaboration: 53,
+			ai_collaboration: 55,
 			ai_collaboration_subsignals: {
 				task_framing: 0,
 				tool_workflow_judgment: 81.25,
 				verification_calibration: 80,
-				cognitive_engagement: 25,
+				// Two single-turn sessions: ceiling 3 each, one question → 2 of 6.
+				cognitive_engagement: 33.33333333333333,
 			},
 			testing: 93,
 			shipping: 63,

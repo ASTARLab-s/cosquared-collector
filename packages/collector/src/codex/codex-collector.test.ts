@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SessionEvent } from "@cosquared/schema";
 import { describe, expect, test } from "vitest";
@@ -50,6 +52,104 @@ describe("CodexCollector", () => {
 			),
 		) as SessionEvent[];
 		expect(basicSessionEvents).toEqual(golden);
+	});
+
+	test("collapses resumed rollouts that replay a conversation's whole history", async () => {
+		// Codex writes a NEW file on every resume containing the ENTIRE prior
+		// history. Counting each file inflates every session- and
+		// prompt-denominated signal with how often a thread was picked back
+		// up. Measured 12.5x on a real repo (calibration 2026-08-28).
+		const dir = mkdtempSync(join(tmpdir(), "codex-resume-"));
+		mkdirSync(join(dir, "2026", "06", "11"), { recursive: true });
+		const meta = {
+			timestamp: "2026-06-11T10:00:00.000Z",
+			type: "session_meta",
+			payload: { id: "resumed-1", cwd: FIXTURE_REPO_PATH },
+		};
+		const turn = (seconds: number, message: string) => ({
+			timestamp: `2026-06-11T10:00:${String(seconds).padStart(2, "0")}.000Z`,
+			type: "event_msg",
+			payload: { type: "user_message", message },
+		});
+		const write = (name: string, lines: unknown[]) =>
+			writeFileSync(
+				join(dir, "2026", "06", "11", name),
+				`${lines.map((line) => JSON.stringify(line)).join("\n")}\n`,
+			);
+		// Three recordings of ONE conversation, each a prefix of the next.
+		// Codex re-stamps replayed history with the RESUME time, so the
+		// shared turns deliberately carry DIFFERENT timestamps per file —
+		// content, not time, is what identifies the conversation.
+		write("rollout-a.jsonl", [
+			meta,
+			turn(1, "add the parser"),
+			turn(2, "now handle errors"),
+		]);
+		write("rollout-b.jsonl", [
+			meta,
+			turn(11, "add the parser"),
+			turn(12, "now handle errors"),
+			turn(13, "and write the tests"),
+		]);
+		write("rollout-c.jsonl", [
+			meta,
+			turn(21, "add the parser"),
+			turn(22, "now handle errors"),
+			turn(23, "and write the tests"),
+			turn(24, "ship it"),
+		]);
+
+		const events = await new CodexCollector({ sessionsDir: dir }).collect({
+			repoPath: FIXTURE_REPO_PATH,
+		});
+		const prompts = events.filter((event) => event.type === "user_prompt");
+		// Four prompts — the longest recording — not the nine the three
+		// files would naively yield.
+		expect(prompts).toHaveLength(4);
+		expect(prompts.map((event) => event.timestamp)).toEqual([
+			"2026-06-11T10:00:21.000Z",
+			"2026-06-11T10:00:22.000Z",
+			"2026-06-11T10:00:23.000Z",
+			"2026-06-11T10:00:24.000Z",
+		]);
+	});
+
+	test("keeps two distinct conversations that merely open the same way", async () => {
+		// A single generic prompt genuinely recurs across unrelated sessions,
+		// so one-prompt conversations are never deduped: merging them would
+		// delete real work to fix an inflation problem.
+		const dir = mkdtempSync(join(tmpdir(), "codex-distinct-"));
+		mkdirSync(join(dir, "2026", "06", "12"), { recursive: true });
+		const build = (id: string, hour: string) => [
+			{
+				timestamp: `2026-06-12T${hour}:00:00.000Z`,
+				type: "session_meta",
+				payload: { id, cwd: FIXTURE_REPO_PATH },
+			},
+			{
+				timestamp: `2026-06-12T${hour}:00:01.000Z`,
+				type: "event_msg",
+				payload: { type: "user_message", message: "add the parser" },
+			},
+		];
+		for (const [name, id, hour] of [
+			["morning.jsonl", "distinct-1", "09"],
+			["evening.jsonl", "distinct-2", "18"],
+		] as const) {
+			writeFileSync(
+				join(dir, "2026", "06", "12", name),
+				`${build(id, hour)
+					.map((line) => JSON.stringify(line))
+					.join("\n")}\n`,
+			);
+		}
+
+		const events = await new CodexCollector({ sessionsDir: dir }).collect({
+			repoPath: FIXTURE_REPO_PATH,
+		});
+		expect(events.filter((event) => event.type === "user_prompt")).toHaveLength(
+			2,
+		);
 	});
 
 	test("excludes rollouts whose cwd is a different repo", async () => {
